@@ -3,7 +3,7 @@ import { decodeState, encodeState, type SharedState } from './share';
 
 const state: SharedState = {
   v: 1,
-  room: { width: 2600, height: 1700 },
+  room: { width: 2600, height: 1700, ceiling: 2500 },
   tile: { width: 1200, height: 600, grout: 2 },
   door: { wall: 'bottom', offset: 1060, width: 900, thresholdDepth: 150 },
   fixtures: [
@@ -16,6 +16,7 @@ const state: SharedState = {
       depth: 700,
       offset: 0,
       bottomHeight: 0,
+      topHeight: 600,
     },
   ],
 };
@@ -38,7 +39,7 @@ describe('переносимое состояние', () => {
         { ...state.fixtures[0], id: 'toilet', kind: 'toilet', bottomHeight: 400 },
       ],
     };
-    expect(encodeState(full).length).toBeLessThan(120);
+    expect(encodeState(full).length).toBeLessThan(140);
   });
 
   it('читает ссылки прежнего формата', () => {
@@ -49,8 +50,10 @@ describe('переносимое состояние', () => {
       'InRocmVzaG9sZERlcHRoIjoxNTB9LCJmaXh0dXJlcyI6W119';
     const decoded = decodeState(legacy);
 
-    expect(decoded?.room).toEqual({ width: 2600, height: 1700 });
+    expect(decoded?.room.width).toBe(2600);
     expect(decoded?.door.thresholdDepth).toBe(150);
+    // Прежние ссылки не знали про высоты — достраиваем значениями по умолчанию.
+    expect(decoded?.room.ceiling).toBe(2500);
   });
 
   it('не разваливается на мусоре', () => {
@@ -60,16 +63,26 @@ describe('переносимое состояние', () => {
   });
 
   it('отбрасывает запись с неизвестным предметом или стеной', () => {
-    expect(decodeState('2.2600.1700.1200.600.2.b.1060.900.150.z.1.l.1700.700.0.0')).toBeNull();
-    expect(decodeState('2.2600.1700.1200.600.2.b.1060.900.150.b.1.z.1700.700.0.0')).toBeNull();
+    expect(decodeState('3.2600.1700.1200.600.2.b.1060.900.150.2500.z.1.l.1700.700.0.0.600')).toBeNull();
+    expect(decodeState('3.2600.1700.1200.600.2.b.1060.900.150.2500.b.1.z.1700.700.0.0.600')).toBeNull();
   });
 
   it('игнорирует состояние чужой версии', () => {
-    expect(decodeState('99.2600.1700.1200.600.2.b.1060.900.150')).toBeNull();
+    expect(decodeState('99.2600.1700.1200.600.2.b.1060.900.150.2500')).toBeNull();
+  });
+
+  it('читает ссылки второй версии и достраивает высоты', () => {
+    // В версии 2 не было ни потолка, ни высот предметов.
+    const v2 = '2.2600.1700.1200.600.2.b.1060.900.150.b.1.l.1700.700.0.0';
+    const decoded = decodeState(v2);
+
+    expect(decoded?.room.width).toBe(2600);
+    expect(decoded?.room.ceiling).toBe(2500);
+    expect(decoded?.fixtures[0].topHeight).toBe(600);
   });
 
   it('отбрасывает состояние с нулевыми размерами', () => {
-    expect(decodeState('2.0.1700.1200.600.2.b.1060.900.150')).toBeNull();
+    expect(decodeState('3.0.1700.1200.600.2.b.1060.900.150.2500')).toBeNull();
   });
 
   it('переживает проект без единого предмета', () => {

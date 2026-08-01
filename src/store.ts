@@ -25,14 +25,21 @@ export interface Fixture {
   offset: number;
   /** Высота нижней кромки над полом; 0 — предмет стоит на полу. */
   bottomHeight: number;
+  /** Высота верхней кромки: борт ванны, верх тумбы. Нужна для раскладки стен. */
+  topHeight: number;
 }
 
+/** Что сейчас раскладываем: пол или одна из стен. */
+export type Surface = 'floor' | Side;
+
 interface State {
+  surface: Surface;
   room: Room;
   tile: Tile;
   door: Door;
   fixtures: Fixture[];
   selectedIndex: number;
+  setSurface: (surface: Surface) => void;
   setRoom: (patch: Partial<Room>) => void;
   setTile: (patch: Partial<Tile>) => void;
   setDoor: (patch: Partial<Door>) => void;
@@ -50,7 +57,12 @@ export function fixtureObject(f: Fixture, room: Room): RoomObject | null {
   const along = Math.min(f.length, wallLength(room, f.wall));
   const across = f.depth;
   const offset = Math.max(0, Math.min(f.offset, wallLength(room, f.wall) - along));
-  const base = { id: f.id, kind: f.kind, bottomHeight: f.bottomHeight };
+  const base = {
+    id: f.id,
+    kind: f.kind,
+    bottomHeight: f.bottomHeight,
+    topHeight: f.topHeight,
+  };
 
   switch (f.wall) {
     case 'left':
@@ -80,7 +92,7 @@ function clampDoor(door: Door, room: Room): Door {
 /** Значения по умолчанию: к ним возвращает сброс. */
 export const DEFAULTS: { room: Room; tile: Tile; door: Door; fixtures: Fixture[] } = {
   // Стена с дверью — 2600 мм, глубина от неё — 1700 мм.
-  room: { width: 2600, height: 1700 },
+  room: { width: 2600, height: 1700, ceiling: 2500 },
   tile: { width: 1200, height: 600, grout: 2 },
   // Проём 900 мм: 1060 мм от левого угла, 640 мм до правого.
   // Глубина проёма 150 мм — толщина перегородки; плитка продолжается туда.
@@ -97,6 +109,8 @@ export const DEFAULTS: { room: Room; tile: Tile; door: Door; fixtures: Fixture[]
       depth: 700,
       offset: 0,
       bottomHeight: 0,
+      // Борт ванны — сильная горизонтальная линия, с ней совмещают шов.
+      topHeight: 600,
     },
     // Подвесная тумба у дальней стены: от края ванны до правой стены,
     // нижняя кромка на 250 мм, верхняя — на 800 мм.
@@ -109,6 +123,7 @@ export const DEFAULTS: { room: Room; tile: Tile; door: Door; fixtures: Fixture[]
       depth: 500,
       offset: 700,
       bottomHeight: 250,
+      topHeight: 800,
     },
     // Подвесной унитаз у правой стены. Фальш-стена инсталляции уже входит
     // в габарит помещения, поэтому отдельным объектом не задаётся.
@@ -121,13 +136,16 @@ export const DEFAULTS: { room: Room; tile: Tile; door: Door; fixtures: Fixture[]
       depth: 540,
       offset: 330,
       bottomHeight: 400,
+      topHeight: 400,
     },
   ],
 };
 
 export const useProject = create<State>((set) => ({
   ...structuredClone(DEFAULTS),
+  surface: 'floor',
   selectedIndex: 0,
+  setSurface: (surface) => set({ surface, selectedIndex: 0 }),
   setRoom: (patch) =>
     set((s) => {
       const room = { ...s.room, ...patch };

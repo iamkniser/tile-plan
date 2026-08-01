@@ -25,7 +25,19 @@ const URL_KEY = 'p';
  * мессенджеры обрезают. Здесь те же данные укладываются в сотню символов,
  * причём без base64: строка и так безопасна для адреса.
  */
-const VERSION = 2;
+const VERSION = 3;
+
+const DEFAULT_CEILING = 2500;
+
+/** Высоты предметов по умолчанию: ими достраиваются ссылки прежних версий. */
+const DEFAULT_TOP: Record<ObjectKind, number> = {
+  bath: 600,
+  cabinet: 800,
+  installation: 400,
+  washer: 850,
+  toilet: 400,
+  sink: 850,
+};
 
 const WALL_CODES: Record<Side, string> = {
   bottom: 'b',
@@ -61,6 +73,7 @@ export function encodeState(state: SharedState): string {
     door.offset,
     door.width,
     door.thresholdDepth ?? 0,
+    room.ceiling ?? DEFAULT_CEILING,
   ];
 
   for (const f of fixtures) {
@@ -72,20 +85,31 @@ export function encodeState(state: SharedState): string {
       f.depth,
       f.offset,
       f.bottomHeight,
+      f.topHeight,
     );
   }
 
   return parts.join('.');
 }
 
-const HEAD_FIELDS = 10;
-const FIXTURE_FIELDS = 7;
+const HEAD_FIELDS = 11;
+const FIXTURE_FIELDS = 8;
 
 /** Возвращает null на любом мусоре: чужая ссылка не должна ронять страницу. */
 export function decodeState(encoded: string): SharedState | null {
   const parts = encoded.split('.');
-  if (parts.length < HEAD_FIELDS) return legacyDecode(encoded);
-  if (Number(parts[0]) !== VERSION) return legacyDecode(encoded);
+  const version = Number(parts[0]);
+
+  // Второй версии не хватало высоты потолка и высот предметов: читаем её той же
+  // разборкой, недостающее достраиваем — иначе уже разосланные ссылки протухнут.
+  if (version === 2 && parts.length >= 10) return decodeCompact(parts, 10, 7);
+  if (version === VERSION && parts.length >= HEAD_FIELDS) {
+    return decodeCompact(parts, HEAD_FIELDS, FIXTURE_FIELDS);
+  }
+  return legacyDecode(encoded);
+}
+
+function decodeCompact(parts: string[], headFields: number, fixtureFields: number): SharedState | null {
 
   const num = (i: number): number | null => {
     const value = Number(parts[i]);
@@ -95,23 +119,27 @@ export function decodeState(encoded: string): SharedState | null {
   const [width, height, tileW, tileH, grout] = [num(1), num(2), num(3), num(4), num(5)];
   const doorWall = decodeFrom(WALL_CODES, parts[6]);
   const [doorOffset, doorWidth, threshold] = [num(7), num(8), num(9)];
+  // В версии 2 высоты потолка в ссылке не было.
+  const ceiling = headFields > 10 ? num(10) : DEFAULT_CEILING;
 
   if (
     width === null || height === null || tileW === null || tileH === null ||
     grout === null || doorWall === null || doorOffset === null || doorWidth === null ||
-    threshold === null || width === 0 || height === 0 || tileW === 0 || tileH === 0
+    threshold === null || ceiling === null ||
+    width === 0 || height === 0 || tileW === 0 || tileH === 0
   ) {
     return null;
   }
 
   const fixtures: Fixture[] = [];
-  for (let i = HEAD_FIELDS; i + FIXTURE_FIELDS <= parts.length; i += FIXTURE_FIELDS) {
+  for (let i = headFields; i + fixtureFields <= parts.length; i += fixtureFields) {
     const kind = decodeFrom(KIND_CODES, parts[i]);
     const wall = decodeFrom(WALL_CODES, parts[i + 2]);
     if (kind === null || wall === null) return null;
 
     const values = [num(i + 3), num(i + 4), num(i + 5), num(i + 6)];
     if (values.some((v) => v === null)) return null;
+    const top = fixtureFields > 7 ? num(i + 7) : null;
 
     fixtures.push({
       id: kind,
@@ -122,12 +150,13 @@ export function decodeState(encoded: string): SharedState | null {
       depth: values[1]!,
       offset: values[2]!,
       bottomHeight: values[3]!,
+      topHeight: top ?? DEFAULT_TOP[kind],
     });
   }
 
   return {
     v: 1,
-    room: { width, height },
+    room: { width, height, ceiling },
     tile: { width: tileW, height: tileH, grout },
     door: { wall: doorWall, offset: doorOffset, width: doorWidth, thresholdDepth: threshold },
     fixtures,
@@ -145,7 +174,16 @@ function legacyDecode(encoded: string): SharedState | null {
     if (parsed?.v !== 1) return null;
     if (!parsed.room?.width || !parsed.tile?.width || !parsed.door?.wall) return null;
     if (!Array.isArray(parsed.fixtures)) return null;
-    return parsed as SharedState;
+
+    const state = parsed as SharedState;
+    return {
+      ...state,
+      room: { ...state.room, ceiling: state.room.ceiling ?? DEFAULT_CEILING },
+      fixtures: state.fixtures.map((f) => ({
+        ...f,
+        topHeight: f.topHeight ?? DEFAULT_TOP[f.kind],
+      })),
+    };
   } catch {
     return null;
   }

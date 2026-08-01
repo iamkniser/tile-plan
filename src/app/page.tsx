@@ -2,20 +2,23 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { LayoutPlan } from '@/components/LayoutPlan';
+import { WallPlan } from '@/components/WallPlan';
 import {
   OBJECT_LABEL,
   buildInstructions,
   buildRationale,
   coverRects,
   generateVariants,
+  generateWallVariants,
   rejectImpractical,
   rowShiftOptions,
   viewerPoint,
   wallLength,
   type Side,
   type Variant,
+  type WallVariant,
 } from '@/engine';
-import { fixtureObjects, useProject } from '@/store';
+import { fixtureObjects, useProject, type Surface } from '@/store';
 import { loadState, saveState, shareUrl } from '@/share';
 
 const MAX_VARIANTS = 12;
@@ -106,6 +109,8 @@ export default function Page() {
     select,
     restore,
     reset,
+    surface,
+    setSurface,
   } = useProject();
 
   // На телефоне форма заняла бы весь первый экран, поэтому там она свёрнута,
@@ -173,7 +178,23 @@ export default function Page() {
 
     return { variants: top, rejections };
   }, [room, tile, door, objects]);
-  const selected = variants[Math.min(selectedIndex, variants.length - 1)];
+  const floorVariant = variants[Math.min(selectedIndex, variants.length - 1)];
+
+  // Раскладка стены считается от выбранного пола: так видно, расходятся ли швы.
+  const wallVariants = useMemo(
+    () =>
+      surface === 'floor'
+        ? []
+        : generateWallVariants({ room, tile, door, objects }, surface, floorVariant.layout).slice(
+            0,
+            MAX_VARIANTS,
+          ),
+    [surface, room, tile, door, objects, floorVariant],
+  );
+
+  const selected = floorVariant;
+  const selectedWall =
+    surface === 'floor' ? null : wallVariants[Math.min(selectedIndex, wallVariants.length - 1)];
 
   const halfBlocked = rowShiftOptions(tile).find((o) => o.id === 'half')!;
   const rationale = useMemo(() => buildRationale(selected, variants), [selected, variants]);
@@ -205,6 +226,11 @@ export default function Page() {
           <legend>Помещение, мм</legend>
           <NumberField label="Ширина" value={room.width} onChange={(v) => setRoom({ width: v })} />
           <NumberField label="Длина" value={room.height} onChange={(v) => setRoom({ height: v })} />
+          <NumberField
+            label="Высота"
+            value={room.ceiling ?? 2500}
+            onChange={(v) => setRoom({ ceiling: v })}
+          />
         </fieldset>
 
         <fieldset>
@@ -305,6 +331,12 @@ export default function Page() {
                   onChange={(v) => setFixture(f.id, { bottomHeight: v })}
                   min={0}
                 />
+                <NumberField
+                  label="Верх над полом"
+                  value={f.topHeight}
+                  onChange={(v) => setFixture(f.id, { topHeight: v })}
+                  min={0}
+                />
               </>
             )}
           </fieldset>
@@ -320,25 +352,59 @@ export default function Page() {
         </section>
       </details>
 
+      <nav className="surfaces">
+        <button
+          type="button"
+          className={surface === 'floor' ? 'surface surface--active' : 'surface'}
+          onClick={() => setSurface('floor')}
+        >
+          пол
+        </button>
+        {(Object.keys(WALL_LABEL) as Side[]).map((w) => (
+          <button
+            key={w}
+            type="button"
+            className={surface === w ? 'surface surface--active' : 'surface'}
+            onClick={() => setSurface(w as Surface)}
+          >
+            {WALL_LABEL[w]} стена
+          </button>
+        ))}
+      </nav>
+
       <section className="workspace">
         <div className="plan-col">
           <div className="plan-sticky">
           <div className="plan-head">
             <span className="rank">№{selectedIndex + 1}</span>
-            <h2>{selected.title}</h2>
+            <h2>{(selectedWall ?? selected).title}</h2>
             <span className="tags">
-              {selected.layout.orientation === 90 && <span className="tag">плитка повёрнута</span>}
-              <span className="tag">{ROW_SHIFT_LABEL[selected.layout.rowShift]}</span>
+              {(selectedWall ?? selected).layout.orientation === 90 && (
+                <span className="tag">плитка повёрнута</span>
+              )}
+              <span className="tag">
+                {ROW_SHIFT_LABEL[(selectedWall ?? selected).layout.rowShift]}
+              </span>
             </span>
           </div>
 
-          <LayoutPlan
-            room={room}
-            variant={selected}
-            door={door}
-            objects={objects}
-            covers={covers}
-          />
+          {selectedWall ? (
+            <WallPlan
+              room={room}
+              wall={selectedWall.wall}
+              variant={selectedWall}
+              objects={objects}
+              door={door}
+            />
+          ) : (
+            <LayoutPlan
+              room={room}
+              variant={selected}
+              door={door}
+              objects={objects}
+              covers={covers}
+            />
+          )}
           </div>
 
         </div>
@@ -362,11 +428,15 @@ export default function Page() {
           )}
 
           <ol className="variants">
-            {variants.map((v, i) => (
+            {(selectedWall ? wallVariants : variants).map((v, i) => (
               <li key={i}>
                 <button
                   type="button"
-                  className={v === selected ? 'variant variant--active' : 'variant'}
+                  className={
+                    i === Math.min(selectedIndex, (selectedWall ? wallVariants : variants).length - 1)
+                      ? 'variant variant--active'
+                      : 'variant'
+                  }
                   onClick={() => select(i)}
                 >
                   <span className="variant__rank">{i + 1}</span>
@@ -377,9 +447,12 @@ export default function Page() {
                       {v.layout.orientation === 90 && ' · повёрнута'}
                     </span>
                     <span className="variant__stats">
-                      видно от {v.metrics.minVisibleCut} мм · резать {v.metrics.cutTileCount}
-                      {v.metrics.entry &&
-                        ` · симметрия ${Math.round(v.metrics.entry.asymmetry)} мм`}
+                      {'entry' in v.metrics
+                        ? `видно от ${v.metrics.minVisibleCut} мм · резать ${v.metrics.cutTileCount}` +
+                          (v.metrics.entry
+                            ? ` · симметрия ${Math.round(v.metrics.entry.asymmetry)} мм`
+                            : '')
+                        : `на глазах от ${(v as WallVariant).metrics.eyeLevelCut} мм · резать ${v.metrics.cutTileCount}`}
                     </span>
                   </span>
                 </button>
@@ -390,6 +463,46 @@ export default function Page() {
       </section>
 
       <section className="details-pane">
+        {selectedWall && (
+          <dl className="summary">
+            <div className="summary__accent">
+              <dt>Подрезка на уровне глаз</dt>
+              <dd>{selectedWall.metrics.eyeLevelCut} мм</dd>
+            </div>
+            <div className="summary__accent">
+              <dt>Шов расходится с полом на</dt>
+              <dd>{selectedWall.metrics.floorJointOffset} мм</dd>
+            </div>
+            {selectedWall.metrics.edgeAlignment && (
+              <div className="summary__accent">
+                <dt>Шов и {OBJECT_LABEL[selectedWall.metrics.edgeAlignment.kind]}</dt>
+                <dd>
+                  {selectedWall.metrics.edgeAlignment.offset === 0
+                    ? 'совпали'
+                    : `${selectedWall.metrics.edgeAlignment.offset} мм`}
+                </dd>
+              </div>
+            )}
+            <div>
+              <dt>Минимальная подрезка</dt>
+              <dd>{selectedWall.metrics.minCut} мм</dd>
+            </div>
+            <div>
+              <dt>Не закрыто мебелью от</dt>
+              <dd>{selectedWall.metrics.minVisibleCut} мм</dd>
+            </div>
+            <div>
+              <dt>Резать плиток</dt>
+              <dd>{selectedWall.metrics.cutTileCount}</dd>
+            </div>
+            <div>
+              <dt>Целых плиток</dt>
+              <dd>{selectedWall.metrics.wholeTileCount}</dd>
+            </div>
+          </dl>
+        )}
+
+        {!selectedWall && (
         <section className="rationale">
           <h3>Почему этот вариант</h3>
           {rationale.pros.length > 0 && (
@@ -408,7 +521,10 @@ export default function Page() {
           )}
           {rationale.tradeoff && <p className="rationale__tradeoff">{rationale.tradeoff}</p>}
         </section>
+        )}
 
+        {!selectedWall && (
+        <>
         <ul className="legend">
           <li>
             <span className="swatch swatch--whole" />целая плитка
@@ -489,11 +605,24 @@ export default function Page() {
           </ol>
         </section>
 
+        </>
+        )}
+
+        {selectedWall && (
+          <p className="hint">
+            Развёртка стены: пол снизу, потолок сверху. Затенена полоса на уровне глаз —
+            тонкая подрезка там читается как брак. Приглушённое закрыто ванной, мебелью
+            или дверным проёмом.
+          </p>
+        )}
+
+        {!selectedWall && (
         <p className="hint">
           План развёрнут так, как помещение видно с порога: вход снизу, глубина вверх.
           Зелёная линия — ось взгляда, по ней и считается симметрия. Под подвесной мебелью
           затемнена только та полоса, которую действительно не видно из-под нижней кромки.
         </p>
+        )}
       </section>
 
       <p className="notice notice--muted">

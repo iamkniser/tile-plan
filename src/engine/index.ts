@@ -20,6 +20,17 @@ export { EYE_HEIGHT, coverRects, hiddenFlags, isHiddenBy, objectEdges, visibleDe
 export type { Rect } from './objects';
 export { buildInstructions, sideName } from './instructions';
 export { buildRationale } from './rationale';
+export {
+  DEFAULT_CEILING,
+  EYE_BAND,
+  floorJointAlong,
+  wallCoverRects,
+  wallEdgeHeights,
+  wallOpening,
+  wallSurface,
+} from './wall';
+export type { WallCover, WallSurface } from './wall';
+export { generateWallVariants } from './wallVariants';
 export type { Rationale } from './rationale';
 export { buildThresholdTiles, computeThresholdMetrics, thresholdBounds } from './threshold';
 export {

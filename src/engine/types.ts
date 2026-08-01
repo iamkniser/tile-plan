@@ -13,6 +13,8 @@ export interface Room {
   width: Mm;
   /** Размер по Y. */
   height: Mm;
+  /** Высота помещения. Нужна только для раскладки стен. */
+  ceiling?: Mm;
 }
 
 export interface Tile {
@@ -91,6 +93,11 @@ export interface RoomObject {
    * она выше, тем глубже видно.
    */
   bottomHeight?: Mm;
+  /**
+   * Высота верхней кромки. На полу не используется, а на стене задаёт полосу,
+   * которую предмет закрывает: борт ванны, верх тумбы, экран инсталляции.
+   */
+  topHeight?: Mm;
 }
 
 /** Крупная мебель, грани которой имеет смысл совмещать со швом. */
@@ -210,6 +217,32 @@ export interface Variant {
   /** Плитки в дверном проёме, за пределами прямоугольника помещения. */
   thresholdTiles: PlacedTile[];
   metrics: Metrics;
+}
+
+/** Оценка раскладки одной стены. */
+export interface WallMetrics {
+  minCut: Mm;
+  /** Минимальная подрезка, не закрытая ни мебелью, ни проёмом. */
+  minVisibleCut: Mm;
+  /** Самая мелкая подрезка на уровне глаз — там она читается как брак. */
+  eyeLevelCut: Mm;
+  cutTileCount: number;
+  wholeTileCount: number;
+  hiddenCutCount: number;
+  cuts: Record<Side, Mm[]>;
+  /** С какой кромкой предмета совпал горизонтальный шов и насколько точно. */
+  edgeAlignment: { kind: ObjectKind; offset: Mm } | null;
+  /** Расхождение ближайшего вертикального шва стены со швом пола. */
+  floorJointOffset: Mm;
+}
+
+export interface WallVariant {
+  wall: Side;
+  layout: Layout;
+  title: string;
+  tiles: PlacedTile[];
+  hiddenTiles: boolean[];
+  metrics: WallMetrics;
 }
 
 export interface Project {

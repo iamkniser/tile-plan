@@ -811,3 +811,53 @@ legend {
     color: #ff7a68;
   }
 }
+
+/* --- Выбор поверхности ---------------------------------------------------- */
+
+.surfaces {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 14px;
+}
+
+.surface {
+  padding: 7px 12px;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  background: var(--panel);
+  color: var(--graphite);
+  font: 12px/1.3 var(--mono);
+  cursor: pointer;
+}
+
+.surface:hover {
+  border-color: var(--laser);
+}
+
+.surface--active {
+  border-color: var(--laser);
+  background: var(--laser);
+  color: var(--panel);
+}
+
+.surface:focus-visible {
+  outline: 2px solid var(--laser);
+  outline-offset: 1px;
+}
+
+/* Полоса на уровне глаз и дверной проём на развёртке стены. */
+.eye-band {
+  fill: none;
+  stroke: var(--laser);
+  stroke-width: 4;
+  stroke-dasharray: 60 40;
+  opacity: 0.55;
+}
+
+.opening {
+  fill: var(--paper);
+  stroke: var(--graphite);
+  stroke-width: 8;
+  stroke-dasharray: 40 24;
+}
