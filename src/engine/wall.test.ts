@@ -201,3 +201,45 @@ describe('за ванной плитки нет', () => {
     }
   });
 });
+
+describe('плитка у дверного проёма', () => {
+  it('не заходит внутрь проёма', () => {
+    const variants = generateWallVariants({ room, tile, door, objects: [] }, 'bottom');
+    const opening = { x: 1060, y: 0, w: 900, h: 2100 };
+
+    for (const v of variants) {
+      for (const t of v.tiles) {
+        const overlapW = Math.min(t.x + t.w, opening.x + opening.w) - Math.max(t.x, opening.x);
+        const overlapH = Math.min(t.y + t.h, opening.y + opening.h) - Math.max(t.y, opening.y);
+        expect(overlapW <= 0 || overlapH <= 0).toBe(true);
+      }
+    }
+  });
+
+  it('обрезанный проёмом кусок считается подрезкой, а не целой плиткой', () => {
+    const variants = generateWallVariants({ room, tile, door, objects: [] }, 'bottom');
+
+    for (const v of variants) {
+      // Кусок, примыкающий к краю проёма, обязан быть помечен как резаный.
+      const touching = v.tiles.filter((t) => t.x + t.w === 1060 || t.x === 1960);
+      for (const t of touching) {
+        if (t.w < 300) expect(t.isCut).toBe(true);
+      }
+    }
+  });
+
+  it('плитки не накладываются друг на друга после обрезки', () => {
+    const variants = generateWallVariants({ room, tile, door, objects: [] }, 'bottom');
+    const v = variants[0];
+
+    for (let i = 0; i < v.tiles.length; i++) {
+      for (let j = i + 1; j < v.tiles.length; j++) {
+        const a = v.tiles[i];
+        const b = v.tiles[j];
+        const overlap =
+          a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+        expect(overlap).toBe(false);
+      }
+    }
+  });
+});

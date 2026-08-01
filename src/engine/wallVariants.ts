@@ -82,11 +82,41 @@ function widthCandidates(width: Mm, tileWidth: Mm, step: Mm, grout: Mm): Candida
 }
 
 /**
- * Убирает из раскладки то, что не облицовывают.
+ * Вычитает зону из прямоугольника: возвращает то, что от него осталось.
  *
- * Плитка, целиком попавшая в исключённую зону, выбрасывается; задетая с краю —
- * обрезается по её границе и считается подрезкой. Обрезка верна, пока зона
- * примыкает к краю развёртки: за ванной и в дверном проёме это так.
+ * Кусков может быть до четырёх — по одному с каждой стороны зоны. Для плитки
+ * у дверного проёма это ровно та часть, которую и режут по месту.
+ */
+function subtractRect(tile: Rect, zone: Rect): Rect[] {
+  const overlapX0 = Math.max(tile.x, zone.x);
+  const overlapY0 = Math.max(tile.y, zone.y);
+  const overlapX1 = Math.min(tile.x + tile.w, zone.x + zone.w);
+  const overlapY1 = Math.min(tile.y + tile.h, zone.y + zone.h);
+
+  // Не пересекаются — плитка цела.
+  if (overlapX1 <= overlapX0 || overlapY1 <= overlapY0) return [tile];
+
+  const parts: Rect[] = [];
+  if (overlapY0 > tile.y) {
+    parts.push({ x: tile.x, y: tile.y, w: tile.w, h: overlapY0 - tile.y });
+  }
+  if (overlapY1 < tile.y + tile.h) {
+    parts.push({ x: tile.x, y: overlapY1, w: tile.w, h: tile.y + tile.h - overlapY1 });
+  }
+  if (overlapX0 > tile.x) {
+    parts.push({ x: tile.x, y: overlapY0, w: overlapX0 - tile.x, h: overlapY1 - overlapY0 });
+  }
+  if (overlapX1 < tile.x + tile.w) {
+    parts.push({ x: overlapX1, y: overlapY0, w: tile.x + tile.w - overlapX1, h: overlapY1 - overlapY0 });
+  }
+
+  return parts.filter((p) => p.w > 0 && p.h > 0);
+}
+
+/**
+ * Убирает из раскладки то, что не облицовывают: пространство за ванной и
+ * дверной проём. Плитка, задетая зоной, режется по её границе и становится
+ * подрезкой; попавшая внутрь целиком — исчезает.
  */
 function clipToExcluded(tiles: PlacedTile[], zones: Rect[]): PlacedTile[] {
   if (zones.length === 0) return tiles;
@@ -94,49 +124,36 @@ function clipToExcluded(tiles: PlacedTile[], zones: Rect[]): PlacedTile[] {
   const result: PlacedTile[] = [];
 
   for (const t of tiles) {
-    let { x, y, w, h } = t;
-    let cutBySide: Side | null = null;
-    let dropped = false;
-
-    for (const z of zones) {
-      const overlapW = Math.min(x + w, z.x + z.w) - Math.max(x, z.x);
-      const overlapH = Math.min(y + h, z.y + z.h) - Math.max(y, z.y);
-      if (overlapW <= 0 || overlapH <= 0) continue;
-
-      // Плитка целиком внутри зоны — её просто нет.
-      if (x >= z.x && x + w <= z.x + z.w && y >= z.y && y + h <= z.y + z.h) {
-        dropped = true;
-        break;
-      }
-
-      // Зона накрывает плитку по всей ширине снизу: поднимаем нижний край.
-      if (x >= z.x && x + w <= z.x + z.w && y < z.y + z.h) {
-        const newY = z.y + z.h;
-        h -= newY - y;
-        y = newY;
-        cutBySide = 'bottom';
-      }
+    let parts: Rect[] = [t];
+    for (const zone of zones) {
+      parts = parts.flatMap((p) => subtractRect(p, zone));
     }
 
-    if (dropped || h <= 0 || w <= 0) continue;
-
-    const changed = h !== t.h || y !== t.y;
-    result.push(
-      changed
-        ? {
-            ...t,
-            x,
-            y,
-            w,
-            h,
-            isCut: true,
-            cutSides: cutBySide ? [...new Set([...t.cutSides, cutBySide])] : t.cutSides,
-          }
-        : t,
-    );
+    for (const p of parts) {
+      const trimmed = p.w !== t.w || p.h !== t.h;
+      result.push({
+        ...t,
+        x: p.x,
+        y: p.y,
+        w: p.w,
+        h: p.h,
+        isCut: t.isCut || trimmed,
+        cutSides: trimmed ? cutSidesOf(p, t) : t.cutSides,
+      });
+    }
   }
 
   return result;
+}
+
+/** По каким сторонам кусок отрезан от исходной плитки. */
+function cutSidesOf(part: Rect, whole: Rect): Side[] {
+  const sides: Side[] = [];
+  if (part.x > whole.x) sides.push('left');
+  if (part.x + part.w < whole.x + whole.w) sides.push('right');
+  if (part.y > whole.y) sides.push('bottom');
+  if (part.y + part.h < whole.y + whole.h) sides.push('top');
+  return sides;
 }
 
 function uniqueSorted(values: Mm[]): Mm[] {
