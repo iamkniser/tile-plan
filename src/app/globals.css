@@ -95,11 +95,55 @@ h1 {
 
 /* --- Параметры ----------------------------------------------------------- */
 
+.params {
+  margin-bottom: 18px;
+}
+
+.params > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--graphite);
+  font: 11px/1 var(--mono);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  list-style: none;
+  cursor: pointer;
+}
+
+.params > summary::-webkit-details-marker {
+  display: none;
+}
+
+.params > summary::after {
+  content: '+';
+  margin-left: auto;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.params[open] > summary::after {
+  content: '−';
+}
+
+.params[open] > summary {
+  margin-bottom: 12px;
+}
+
+.params > summary:focus-visible {
+  outline: 2px solid var(--laser);
+  outline-offset: 1px;
+}
+
 .controls {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
-  margin-bottom: 20px;
+  margin: 0;
 }
 
 fieldset {
@@ -181,11 +225,31 @@ legend {
   align-items: start;
 }
 
+/* Колонка тянется на всю высоту строки: иначе чертёж перестал бы липнуть
+   раньше, чем закончится список вариантов. */
+.plan-col {
+  min-width: 0;
+  align-self: stretch;
+}
+
+/* Подробности лежат ниже рабочей области, а не под липким чертежом:
+   читать текст, наполовину закрытый планом, невозможно. */
+.details-pane {
+  margin-top: 16px;
+  padding: 18px 20px;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
 /* План не уезжает при листании вариантов — их бывает много. */
-.plan-pane {
+.plan-sticky {
   position: sticky;
   top: 16px;
-  padding: 16px 18px 18px;
+  /* Подробности идут следом в потоке и без этого перекрыли бы прилипший чертёж. */
+  z-index: 2;
+  padding: 14px 18px 16px;
   border: 1px solid var(--rule);
   border-radius: 4px;
   background: var(--panel);
@@ -331,7 +395,7 @@ legend {
   display: flex;
   flex-wrap: wrap;
   gap: 5px 16px;
-  margin: 10px 0 0;
+  margin: 0;
   padding: 0;
   list-style: none;
   color: var(--graphite);
@@ -406,8 +470,9 @@ legend {
 }
 
 .hint {
-  margin: 12px 0 0;
-  padding-top: 12px;
+  max-width: 76ch;
+  margin: 14px 0 0;
+  padding-top: 14px;
   border-top: 1px solid var(--rule);
   color: var(--graphite);
   font-size: 12px;
@@ -538,22 +603,85 @@ legend {
 /* --- Адаптив ------------------------------------------------------------- */
 
 @media (max-width: 900px) {
-  .workspace {
-    grid-template-columns: minmax(0, 1fr);
+  main {
+    padding: 0 14px 40px;
   }
 
-  .plan-pane {
+  /* Порядок на телефоне: чертёж, затем выбор варианта, затем подробности.
+     Обёртка колонки растворяется, чтобы переставить блоки местами. */
+  .workspace {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      'plan'
+      'variants';
+    grid-template-rows: auto;
+    gap: 14px;
+  }
+
+  .plan-col {
+    display: contents;
+  }
+
+  .plan-sticky {
+    grid-area: plan;
     top: 0;
-    z-index: 1;
+    padding: 10px 12px 12px;
+    border-radius: 0 0 4px 4px;
+  }
+
+  .variants-pane {
+    grid-area: variants;
+  }
+
+  .details-pane {
+    margin-top: 14px;
+    padding: 14px 12px;
   }
 
   .plan {
-    max-height: 38vh;
+    max-height: 34vh;
   }
 
-  /* На узком экране план важнее цифр: сводку убираем под сам чертёж. */
-  .summary,
-  .hint {
+  .plan-head {
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+
+  .plan-head h2 {
+    font-size: 14px;
+  }
+
+  .details-pane {
+    padding: 14px 12px;
+  }
+
+  /* iOS увеличивает страницу при фокусе на поле мельче 16px. */
+  .field input,
+  .field select {
+    width: 100%;
+    min-height: 44px;
+    font-size: 16px;
+  }
+
+  .field {
+    flex: 1 1 132px;
+  }
+
+  fieldset {
+    flex: 1 1 100%;
+  }
+
+  .variant {
+    min-height: 48px;
+    padding: 11px 12px;
+  }
+
+  .stamp {
+    padding: 12px 0 10px;
+    margin-bottom: 14px;
+  }
+
+  .lead {
     display: none;
   }
 }
@@ -566,11 +694,12 @@ legend {
   }
 }
 
-/* --- Наряд для укладчика ------------------------------------------------- */
+/* --- Задание на укладку -------------------------------------------------- */
 
 .brief {
-  margin-top: 14px;
-  padding-top: 14px;
+  max-width: 76ch;
+  margin-top: 16px;
+  padding-top: 16px;
   border-top: 1px solid var(--rule);
 }
 

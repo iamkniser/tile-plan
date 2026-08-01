@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { LayoutPlan } from '@/components/LayoutPlan';
 import {
   OBJECT_LABEL,
@@ -94,6 +94,13 @@ export default function Page() {
   const { room, tile, door, fixtures, selectedIndex, setRoom, setTile, setDoor, setFixture, select } =
     useProject();
 
+  // На телефоне форма заняла бы весь первый экран, поэтому там она свёрнута,
+  // а на широком экране открыта сразу.
+  const [paramsOpen, setParamsOpen] = useState(true);
+  useEffect(() => {
+    setParamsOpen(window.matchMedia('(min-width: 901px)').matches);
+  }, []);
+
   const objects = useMemo(() => fixtureObjects(fixtures, room), [fixtures, room]);
   // Зоны, реально закрытые от взгляда: под подвесной мебелью пол просматривается.
   const covers = useMemo(
@@ -136,7 +143,11 @@ export default function Page() {
         </p>
       </header>
 
-      <section className="controls">
+      <details className="params" open={paramsOpen}>
+        <summary onClick={(e) => { e.preventDefault(); setParamsOpen((v) => !v); }}>
+          Параметры помещения
+        </summary>
+        <section className="controls">
         <fieldset>
           <legend>Помещение, мм</legend>
           <NumberField label="Ширина" value={room.width} onChange={(v) => setRoom({ width: v })} />
@@ -245,10 +256,12 @@ export default function Page() {
             )}
           </fieldset>
         ))}
-      </section>
+        </section>
+      </details>
 
       <section className="workspace">
-        <div className="plan-pane">
+        <div className="plan-col">
+          <div className="plan-sticky">
           <div className="plan-head">
             <span className="rank">№{selectedIndex + 1}</span>
             <h2>{selected.title}</h2>
@@ -265,92 +278,8 @@ export default function Page() {
             objects={objects}
             covers={covers}
           />
+          </div>
 
-          <ul className="legend">
-            <li>
-              <span className="swatch swatch--whole" />целая плитка
-            </li>
-            <li>
-              <span className="swatch swatch--cut" />подрезка, число — размер куска, мм
-            </li>
-            <li>
-              <span className="swatch swatch--hidden" />закрыто мебелью
-            </li>
-            <li>
-              <span className="swatch swatch--gaze" />сектор обзора
-            </li>
-            <li>
-              <span className="swatch swatch--axis" />ось взгляда
-            </li>
-          </ul>
-
-          <dl className="summary">
-            {selected.metrics.entry && (
-              <>
-                <div className="summary__accent">
-                  <dt>Симметрия к оси входа</dt>
-                  <dd>{symmetryText(selected.metrics.entry.asymmetry)}</dd>
-                </div>
-                <div className="summary__accent">
-                  <dt>В зоне обзора видно от</dt>
-                  <dd>{selected.metrics.entry.minCut} мм</dd>
-                </div>
-              </>
-            )}
-            {selected.metrics.threshold && (
-              <div className="summary__accent">
-                <dt>Плитка в проёме</dt>
-                <dd>
-                  {selected.metrics.threshold.seamless
-                    ? 'без шва'
-                    : `шов внутри, узкий кусок ${selected.metrics.threshold.narrowestPiece} мм`}
-                </dd>
-              </div>
-            )}
-            <div>
-              <dt>Минимальная подрезка</dt>
-              <dd>{selected.metrics.minCut} мм</dd>
-            </div>
-            <div>
-              <dt>Не закрыто мебелью от</dt>
-              <dd>{selected.metrics.minVisibleCut} мм</dd>
-            </div>
-            <div>
-              <dt>Спрятано под мебель</dt>
-              <dd>{selected.metrics.hiddenCutCount}</dd>
-            </div>
-            <div>
-              <dt>Резать плиток</dt>
-              <dd>{selected.metrics.cutTileCount}</dd>
-            </div>
-            <div>
-              <dt>Целых плиток</dt>
-              <dd>{selected.metrics.wholeTileCount}</dd>
-            </div>
-            <div>
-              <dt>Площадь пола</dt>
-              <dd>{area.toFixed(2)} м²</dd>
-            </div>
-            <div>
-              <dt>Купить с запасом 10%</dt>
-              <dd>{Math.ceil(total * 1.1)}</dd>
-            </div>
-          </dl>
-
-          <section className="brief">
-            <h3>Что сказать плиточнику</h3>
-            <ol>
-              {buildInstructions(room, tile, door, selected).map((step, i) => (
-                <li key={i}>{step}</li>
-              ))}
-            </ol>
-          </section>
-
-          <p className="hint">
-            План развёрнут так, как помещение видно с порога: вход снизу, глубина вверх.
-            Зелёная линия — ось взгляда, по ней и считается симметрия. Под подвесной мебелью
-            затемнена только та полоса, которую действительно не видно из-под нижней кромки.
-          </p>
         </div>
 
         <div className="variants-pane">
@@ -397,6 +326,94 @@ export default function Page() {
             ))}
           </ol>
         </div>
+      </section>
+
+      <section className="details-pane">
+        <ul className="legend">
+          <li>
+            <span className="swatch swatch--whole" />целая плитка
+          </li>
+          <li>
+            <span className="swatch swatch--cut" />подрезка, число — размер куска, мм
+          </li>
+          <li>
+            <span className="swatch swatch--hidden" />закрыто мебелью
+          </li>
+          <li>
+            <span className="swatch swatch--gaze" />сектор обзора
+          </li>
+          <li>
+            <span className="swatch swatch--axis" />ось взгляда
+          </li>
+        </ul>
+
+        <dl className="summary">
+          {selected.metrics.entry && (
+            <>
+              <div className="summary__accent">
+                <dt>Симметрия к оси входа</dt>
+                <dd>{symmetryText(selected.metrics.entry.asymmetry)}</dd>
+              </div>
+              <div className="summary__accent">
+                <dt>В зоне обзора видно от</dt>
+                <dd>{selected.metrics.entry.minCut} мм</dd>
+              </div>
+            </>
+          )}
+          {selected.metrics.threshold && (
+            <div className="summary__accent">
+              <dt>Плитка в проёме</dt>
+              <dd>
+                {selected.metrics.threshold.seamless
+                  ? 'без шва'
+                  : `шов внутри, узкий кусок ${selected.metrics.threshold.narrowestPiece} мм`}
+              </dd>
+            </div>
+          )}
+          <div>
+            <dt>Минимальная подрезка</dt>
+            <dd>{selected.metrics.minCut} мм</dd>
+          </div>
+          <div>
+            <dt>Не закрыто мебелью от</dt>
+            <dd>{selected.metrics.minVisibleCut} мм</dd>
+          </div>
+          <div>
+            <dt>Спрятано под мебель</dt>
+            <dd>{selected.metrics.hiddenCutCount}</dd>
+          </div>
+          <div>
+            <dt>Резать плиток</dt>
+            <dd>{selected.metrics.cutTileCount}</dd>
+          </div>
+          <div>
+            <dt>Целых плиток</dt>
+            <dd>{selected.metrics.wholeTileCount}</dd>
+          </div>
+          <div>
+            <dt>Площадь пола</dt>
+            <dd>{area.toFixed(2)} м²</dd>
+          </div>
+          <div>
+            <dt>Купить с запасом 10%</dt>
+            <dd>{Math.ceil(total * 1.1)}</dd>
+          </div>
+        </dl>
+
+        <section className="brief">
+          <h3>Задание на укладку</h3>
+          <ol>
+            {buildInstructions(room, tile, door, selected).map((step, i) => (
+              <li key={i}>{step}</li>
+            ))}
+          </ol>
+        </section>
+
+        <p className="hint">
+          План развёрнут так, как помещение видно с порога: вход снизу, глубина вверх.
+          Зелёная линия — ось взгляда, по ней и считается симметрия. Под подвесной мебелью
+          затемнена только та полоса, которую действительно не видно из-под нижней кромки.
+        </p>
       </section>
 
       <p className="notice notice--muted">
