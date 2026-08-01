@@ -26,30 +26,54 @@ describe('переносимое состояние', () => {
   });
 
   it('кодируется безопасно для адресной строки', () => {
-    expect(encodeState(state)).toMatch(/^[A-Za-z0-9_-]+$/);
+    expect(encodeState(state)).toMatch(/^[A-Za-z0-9_.-]+$/);
+  });
+
+  it('умещается в сотню символов, а не в шестьсот', () => {
+    const full: SharedState = {
+      ...state,
+      fixtures: [
+        state.fixtures[0],
+        { ...state.fixtures[0], id: 'cabinet', kind: 'cabinet', bottomHeight: 250 },
+        { ...state.fixtures[0], id: 'toilet', kind: 'toilet', bottomHeight: 400 },
+      ],
+    };
+    expect(encodeState(full).length).toBeLessThan(120);
+  });
+
+  it('читает ссылки прежнего формата', () => {
+    // JSON в base64url — так выглядели ссылки первой версии.
+    const legacy =
+      'eyJ2IjoxLCJyb29tIjp7IndpZHRoIjoyNjAwLCJoZWlnaHQiOjE3MDB9LCJ0aWxlIjp7IndpZHRoIjoxMjAwLCJoZWln' +
+      'aHQiOjYwMCwiZ3JvdXQiOjJ9LCJkb29yIjp7IndhbGwiOiJib3R0b20iLCJvZmZzZXQiOjEwNjAsIndpZHRoIjo5MDAs' +
+      'InRocmVzaG9sZERlcHRoIjoxNTB9LCJmaXh0dXJlcyI6W119';
+    const decoded = decodeState(legacy);
+
+    expect(decoded?.room).toEqual({ width: 2600, height: 1700 });
+    expect(decoded?.door.thresholdDepth).toBe(150);
   });
 
   it('не разваливается на мусоре', () => {
-    for (const junk of ['', 'не base64!!', 'YWJj', '%%%']) {
+    for (const junk of ['', 'не формат!!', 'YWJj', '%%%', '2.0.0.0.0.0.x.0.0.0']) {
       expect(decodeState(junk)).toBeNull();
     }
   });
 
+  it('отбрасывает запись с неизвестным предметом или стеной', () => {
+    expect(decodeState('2.2600.1700.1200.600.2.b.1060.900.150.z.1.l.1700.700.0.0')).toBeNull();
+    expect(decodeState('2.2600.1700.1200.600.2.b.1060.900.150.b.1.z.1700.700.0.0')).toBeNull();
+  });
+
   it('игнорирует состояние чужой версии', () => {
-    const future = encodeState({ ...state, v: 99 as unknown as 1 });
-    expect(decodeState(future)).toBeNull();
+    expect(decodeState('99.2600.1700.1200.600.2.b.1060.900.150')).toBeNull();
   });
 
-  it('отбрасывает состояние без обязательных полей', () => {
-    const broken = btoa(JSON.stringify({ v: 1, room: {}, tile: {}, door: {} }))
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_')
-      .replace(/=+$/, '');
-    expect(decodeState(broken)).toBeNull();
+  it('отбрасывает состояние с нулевыми размерами', () => {
+    expect(decodeState('2.0.1700.1200.600.2.b.1060.900.150')).toBeNull();
   });
 
-  it('сохраняет кириллицу в размерах и названиях', () => {
-    const withText = { ...state, fixtures: [{ ...state.fixtures[0], id: 'ванна-1' }] };
-    expect(decodeState(encodeState(withText))?.fixtures[0].id).toBe('ванна-1');
+  it('переживает проект без единого предмета', () => {
+    const empty: SharedState = { ...state, fixtures: [] };
+    expect(decodeState(encodeState(empty))).toEqual(empty);
   });
 });
