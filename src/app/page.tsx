@@ -105,6 +105,7 @@ export default function Page() {
     setFixture,
     select,
     restore,
+    reset,
   } = useProject();
 
   // На телефоне форма заняла бы весь первый экран, поэтому там она свёрнута,
@@ -126,6 +127,21 @@ export default function Page() {
   useEffect(() => {
     if (restored) saveState({ v: 1, room, tile, door, fixtures });
   }, [restored, room, tile, door, fixtures]);
+
+  // Сброс стирает введённые размеры, поэтому спрашиваем второй раз — но без
+  // блокирующего диалога: кнопка сама превращается в подтверждение.
+  const [confirmReset, setConfirmReset] = useState(false);
+  function resetAll() {
+    if (!confirmReset) {
+      setConfirmReset(true);
+      setTimeout(() => setConfirmReset(false), 4000);
+      return;
+    }
+    setConfirmReset(false);
+    reset();
+    // Иначе состояние из адреса вернётся при следующей загрузке.
+    window.history.replaceState(null, '', window.location.pathname);
+  }
 
   const [copied, setCopied] = useState(false);
   async function copyLink() {
@@ -293,6 +309,14 @@ export default function Page() {
             )}
           </fieldset>
         ))}
+
+          <button
+            type="button"
+            className={confirmReset ? 'link link--warn' : 'link'}
+            onClick={resetAll}
+          >
+            {confirmReset ? 'подтвердить сброс' : 'вернуть исходные размеры'}
+          </button>
         </section>
       </details>
 

@@ -40,6 +40,8 @@ interface State {
   select: (index: number) => void;
   /** Применить состояние из ссылки или прошлого сеанса. */
   restore: (state: { room: Room; tile: Tile; door: Door; fixtures: Fixture[] }) => void;
+  /** Вернуться к значениям по умолчанию. */
+  reset: () => void;
 }
 
 /** Габаритный прямоугольник предмета, прижатого к своей стене. */
@@ -75,7 +77,8 @@ function clampDoor(door: Door, room: Room): Door {
   return { ...door, width, offset: Math.max(0, Math.min(door.offset, wall - width)) };
 }
 
-export const useProject = create<State>((set) => ({
+/** Значения по умолчанию: к ним возвращает сброс. */
+export const DEFAULTS: { room: Room; tile: Tile; door: Door; fixtures: Fixture[] } = {
   // Стена с дверью — 2600 мм, глубина от неё — 1700 мм.
   room: { width: 2600, height: 1700 },
   tile: { width: 1200, height: 600, grout: 2 },
@@ -120,6 +123,10 @@ export const useProject = create<State>((set) => ({
       bottomHeight: 400,
     },
   ],
+};
+
+export const useProject = create<State>((set) => ({
+  ...structuredClone(DEFAULTS),
   selectedIndex: 0,
   setRoom: (patch) =>
     set((s) => {
@@ -136,4 +143,5 @@ export const useProject = create<State>((set) => ({
     })),
   select: (index) => set({ selectedIndex: index }),
   restore: (state) => set({ ...state, selectedIndex: 0 }),
+  reset: () => set({ ...structuredClone(DEFAULTS), selectedIndex: 0 }),
 }));

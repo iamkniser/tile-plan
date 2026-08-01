@@ -796,3 +796,18 @@ legend {
   color: var(--graphite);
   font-size: 13px;
 }
+
+.controls > .link {
+  align-self: flex-start;
+  padding: 12px 2px;
+}
+
+.link--warn {
+  color: #c0392b;
+}
+
+@media (prefers-color-scheme: dark) {
+  .link--warn {
+    color: #ff7a68;
+  }
+}
