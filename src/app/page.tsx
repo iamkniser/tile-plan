@@ -9,12 +9,18 @@ import {
   buildRationale,
   coverRects,
   generateVariants,
+  generateScreenVariants,
   generateWallVariants,
   rejectImpractical,
   rejectWallVariants,
   rowShiftOptions,
   viewerPoint,
+  screenCovers,
+  screenSurface,
+  wallCoverRects,
   wallLength,
+  wallOpening,
+  wallSurface,
   type Side,
   type Variant,
   type WallVariant,
@@ -185,10 +191,44 @@ export default function Page() {
   const { wallVariants, wallRejected } = useMemo(() => {
     if (surface === 'floor') return { wallVariants: [], wallRejected: 0 };
 
-    const all = generateWallVariants({ room, tile, door, objects }, surface, floorVariant.layout);
+    const all = surface.startsWith('screen:')
+      ? generateScreenVariants(
+          { room, tile, door, objects },
+          surface.slice('screen:'.length),
+          floorVariant.layout,
+        )
+      : generateWallVariants({ room, tile, door, objects }, surface as Side, floorVariant.layout);
+
     const { kept, rejected } = rejectWallVariants(all);
     return { wallVariants: kept.slice(0, MAX_VARIANTS), wallRejected: rejected };
   }, [surface, room, tile, door, objects, floorVariant]);
+
+  // Что именно рисуем: развёртку стены или экран ванны — данные для них разные.
+  const isScreen = surface !== 'floor' && surface.startsWith('screen:');
+  const screenObject = isScreen
+    ? objects.find((o) => o.id === surface.slice('screen:'.length))
+    : undefined;
+
+  const activeSurface = useMemo(() => {
+    if (surface === 'floor') return null;
+    if (screenObject) {
+      const s = screenSurface(room, screenObject);
+      return s ? { width: s.width, height: s.height } : null;
+    }
+    return wallSurface(room, surface as Side);
+  }, [surface, room, screenObject]);
+
+  const activeCovers = useMemo(() => {
+    if (surface === 'floor') return [];
+    return screenObject
+      ? screenCovers(room, screenObject, objects)
+      : wallCoverRects(room, surface as Side, objects);
+  }, [surface, room, objects, screenObject]);
+
+  const activeOpening = useMemo(
+    () => (surface === 'floor' || isScreen ? null : wallOpening(room, surface as Side, door)),
+    [surface, isScreen, room, door],
+  );
 
   const selected = floorVariant;
   const selectedWall =
@@ -376,6 +416,18 @@ export default function Page() {
             {WALL_LABEL[w]} стена
           </button>
         ))}
+        {objects
+          .filter((o) => screenSurface(room, o) !== null && o.kind === 'bath')
+          .map((o) => (
+            <button
+              key={o.id}
+              type="button"
+              className={surface === `screen:${o.id}` ? 'surface surface--active' : 'surface'}
+              onClick={() => setSurface(`screen:${o.id}`)}
+            >
+              экран ванны
+            </button>
+          ))}
       </nav>
 
       <section className="workspace">
@@ -396,11 +448,11 @@ export default function Page() {
 
           {selectedWall ? (
             <WallPlan
-              room={room}
-              wall={selectedWall.wall}
+              surface={activeSurface!}
               variant={selectedWall}
-              objects={objects}
-              door={door}
+              covers={activeCovers}
+              opening={activeOpening}
+              showEyeBand={!isScreen}
             />
           ) : (
             <LayoutPlan

@@ -1,17 +1,6 @@
 'use client';
 
-import {
-  EYE_BAND,
-  OBJECT_LABEL,
-  wallCoverRects,
-  wallOpening,
-  wallSurface,
-  type Door,
-  type Room,
-  type RoomObject,
-  type Side,
-  type WallVariant,
-} from '@/engine';
+import { EYE_BAND, OBJECT_LABEL, type Rect, type WallCover, type WallVariant } from '@/engine';
 
 const SIDE = 240; // поле вокруг развёртки под размерные линии, мм
 const FONT = 62;
@@ -25,23 +14,20 @@ function fits(w: number, h: number, text: string): boolean {
  * В SVG ось Y растёт вниз, поэтому высота переворачивается при рендере.
  */
 export function WallPlan({
-  room,
-  wall,
+  surface,
   variant,
-  objects = [],
-  door,
+  covers = [],
+  opening,
+  showEyeBand = true,
 }: {
-  room: Room;
-  wall: Side;
+  surface: { width: number; height: number };
   variant: WallVariant;
-  objects?: RoomObject[];
-  door?: Door;
+  covers?: WallCover[];
+  opening?: Rect | null;
+  /** У экрана ванны полосы глаз нет: он целиком ниже неё. */
+  showEyeBand?: boolean;
 }) {
-  const surface = wallSurface(room, wall);
   const flip = (y: number, h: number) => surface.height - y - h;
-
-  const covers = wallCoverRects(room, wall, objects);
-  const opening = wallOpening(room, wall, door);
 
   return (
     <svg
@@ -86,13 +72,15 @@ export function WallPlan({
       })}
 
       {/* Полоса на уровне глаз: тонкая подрезка здесь читается как брак. */}
-      <rect
-        x={0}
-        y={flip(EYE_BAND.from, EYE_BAND.to - EYE_BAND.from)}
-        width={surface.width}
-        height={EYE_BAND.to - EYE_BAND.from}
-        className="eye-band"
-      />
+      {showEyeBand && EYE_BAND.to < surface.height && (
+        <rect
+          x={0}
+          y={flip(EYE_BAND.from, EYE_BAND.to - EYE_BAND.from)}
+          width={surface.width}
+          height={EYE_BAND.to - EYE_BAND.from}
+          className="eye-band"
+        />
+      )}
 
       {/* Предметы, закрывающие стену: ванна до борта, тумба между кромками. */}
       {covers.map((c) => (

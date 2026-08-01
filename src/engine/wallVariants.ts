@@ -219,20 +219,46 @@ export function generateWallVariants(
   wall: Side,
   floorLayout?: Layout,
 ): WallVariant[] {
-  const { room, tile, door } = project;
+  const { room, door } = project;
   const objects = project.objects ?? [];
-  const surface = wallSurface(room, wall);
 
-  const covers: Rect[] = wallCoverRects(room, wall, objects);
-  // Зоны, где плитки нет вовсе: за ванной и в дверном проёме.
-  const excluded = wallExcludedRects(room, wall, objects, door);
+  return generateSurfaceVariants(project, {
+    id: wall,
+    surface: wallSurface(room, wall),
+    covers: wallCoverRects(room, wall, objects),
+    excluded: wallExcludedRects(room, wall, objects, door),
+    edges: wallEdgeHeights(room, wall, objects),
+    floorLayout,
+  });
+}
+
+/** Общая часть: раскладка любой плоской поверхности — стены или экрана ванны. */
+export interface SurfaceInput {
+  id: Side;
+  surface: { width: Mm; height: Mm };
+  covers: Rect[];
+  excluded: Rect[];
+  edges: Array<{ value: Mm; kind: string }>;
+  floorLayout?: Layout;
+}
+
+export function generateSurfaceVariants(
+  project: Project,
+  input: SurfaceInput,
+): WallVariant[] {
+  const { room, tile } = project;
+  const wall = input.id;
+  const surface = input.surface;
+  const covers = input.covers;
+  const excluded = input.excluded;
+  const edges = input.edges;
+  const floorLayout = input.floorLayout;
 
   // Если у пола есть зона без облицовки, плитка начинается от её верхней кромки.
   const tilingBottom = excluded
     .filter((z) => z.y <= 0 && z.w >= surface.width / 2)
     .reduce((max, z) => Math.max(max, z.y + z.h), 0);
 
-  const edges = wallEdgeHeights(room, wall, objects);
   const labelFor = (kind: string) => LABELS[kind] ?? kind;
 
   const orientations: Orientation[] = tile.width === tile.height ? [0] : [0, 90];

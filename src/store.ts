@@ -32,7 +32,7 @@ export interface Fixture {
 }
 
 /** Что сейчас раскладываем: пол или одна из стен. */
-export type Surface = 'floor' | Side;
+export type Surface = 'floor' | Side | `screen:${string}`;
 
 interface State {
   surface: Surface;

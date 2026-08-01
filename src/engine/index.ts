@@ -31,6 +31,8 @@ export {
 } from './wall';
 export type { WallCover, WallSurface } from './wall';
 export { MIN_EYE_LEVEL_CUT, generateWallVariants, rejectWallVariants } from './wallVariants';
+export { generateScreenVariants, screenCovers, screenSurface } from './screen';
+export type { ScreenSurface } from './screen';
 export type { Rationale } from './rationale';
 export { buildThresholdTiles, computeThresholdMetrics, thresholdBounds } from './threshold';
 export {
