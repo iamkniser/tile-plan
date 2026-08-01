@@ -34,14 +34,19 @@ export interface Fixture {
 /** Что сейчас раскладываем: пол или одна из стен. */
 export type Surface = 'floor' | Side | `screen:${string}`;
 
+/** Как лежит плитка на стенах: длинной стороной по горизонтали или вертикали. */
+export type WallOrientation = 'horizontal' | 'vertical';
+
 interface State {
   surface: Surface;
+  wallOrientation: WallOrientation;
   room: Room;
   tile: Tile;
   door: Door;
   fixtures: Fixture[];
   selectedIndex: number;
   setSurface: (surface: Surface) => void;
+  setWallOrientation: (o: WallOrientation) => void;
   setRoom: (patch: Partial<Room>) => void;
   setTile: (patch: Partial<Tile>) => void;
   setDoor: (patch: Partial<Door>) => void;
@@ -151,8 +156,10 @@ export const DEFAULTS: { room: Room; tile: Tile; door: Door; fixtures: Fixture[]
 export const useProject = create<State>((set) => ({
   ...structuredClone(DEFAULTS),
   surface: 'floor',
+  wallOrientation: 'horizontal',
   selectedIndex: 0,
   setSurface: (surface) => set({ surface, selectedIndex: 0 }),
+  setWallOrientation: (wallOrientation) => set({ wallOrientation, selectedIndex: 0 }),
   setRoom: (patch) =>
     set((s) => {
       const room = { ...s.room, ...patch };

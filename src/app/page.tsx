@@ -11,6 +11,7 @@ import {
   generateVariants,
   generateScreenVariants,
   generateWallVariants,
+  rankWallVariants,
   rejectImpractical,
   rejectWallVariants,
   rowShiftOptions,
@@ -118,6 +119,8 @@ export default function Page() {
     reset,
     surface,
     setSurface,
+    wallOrientation,
+    setWallOrientation,
   } = useProject();
 
   // На телефоне форма заняла бы весь первый экран, поэтому там она свёрнута,
@@ -191,17 +194,32 @@ export default function Page() {
   const { wallVariants, wallRejected } = useMemo(() => {
     if (surface === 'floor') return { wallVariants: [], wallRejected: 0 };
 
+    // Длинная сторона плитки по горизонтали — это поворот 0, если сама плитка
+    // задана длинной стороной по ширине.
+    const longSideIsWidth = tile.width >= tile.height;
+    const orientation: 0 | 90 =
+      wallOrientation === 'horizontal' ? (longSideIsWidth ? 0 : 90) : longSideIsWidth ? 90 : 0;
+
     const all = surface.startsWith('screen:')
       ? generateScreenVariants(
           { room, tile, door, objects },
           surface.slice('screen:'.length),
           floorVariant.layout,
+          orientation,
         )
-      : generateWallVariants({ room, tile, door, objects }, surface as Side, floorVariant.layout);
+      : generateWallVariants(
+          { room, tile, door, objects },
+          surface as Side,
+          floorVariant.layout,
+          orientation,
+        );
 
     const { kept, rejected } = rejectWallVariants(all);
-    return { wallVariants: kept.slice(0, MAX_VARIANTS), wallRejected: rejected };
-  }, [surface, room, tile, door, objects, floorVariant]);
+    return {
+      wallVariants: kept.sort(rankWallVariants).slice(0, MAX_VARIANTS),
+      wallRejected: rejected,
+    };
+  }, [surface, room, tile, door, objects, floorVariant, wallOrientation]);
 
   // Что именно рисуем: развёртку стены или экран ванны — данные для них разные.
   const isScreen = surface !== 'floor' && surface.startsWith('screen:');
@@ -430,6 +448,26 @@ export default function Page() {
           ))}
       </nav>
 
+      {surface !== 'floor' && (
+        <nav className="surfaces surfaces--sub">
+          <span className="surfaces__label">плитка на стенах</span>
+          <button
+            type="button"
+            className={wallOrientation === 'horizontal' ? 'surface surface--active' : 'surface'}
+            onClick={() => setWallOrientation('horizontal')}
+          >
+            горизонтально
+          </button>
+          <button
+            type="button"
+            className={wallOrientation === 'vertical' ? 'surface surface--active' : 'surface'}
+            onClick={() => setWallOrientation('vertical')}
+          >
+            вертикально
+          </button>
+        </nav>
+      )}
+
       <section className="workspace">
         <div className="plan-col">
           <div className="plan-sticky">
@@ -437,7 +475,7 @@ export default function Page() {
             <span className="rank">№{selectedIndex + 1}</span>
             <h2>{(selectedWall ?? selected).title}</h2>
             <span className="tags">
-              {(selectedWall ?? selected).layout.orientation === 90 && (
+              {!selectedWall && selected.layout.orientation === 90 && (
                 <span className="tag">плитка повёрнута</span>
               )}
               <span className="tag">
@@ -508,7 +546,7 @@ export default function Page() {
                     <span className="variant__title">{v.title}</span>
                     <span className="variant__meta">
                       {ROW_SHIFT_LABEL[v.layout.rowShift]}
-                      {v.layout.orientation === 90 && ' · повёрнута'}
+                      {!selectedWall && v.layout.orientation === 90 && ' · повёрнута'}
                     </span>
                     <span className="variant__stats">
                       {'entry' in v.metrics
@@ -516,7 +554,7 @@ export default function Page() {
                           (v.metrics.entry
                             ? ` · симметрия ${Math.round(v.metrics.entry.asymmetry)} мм`
                             : '')
-                        : `на глазах от ${(v as WallVariant).metrics.eyeLevelCut} мм · резать ${v.metrics.cutTileCount}`}
+                        : `${(v as WallVariant).metrics.pieceCount} кусков, ${(v as WallVariant).metrics.distinctCuts} размеров · на глазах от ${(v as WallVariant).metrics.eyeLevelCut} мм`}
                     </span>
                   </span>
                 </button>
@@ -529,6 +567,14 @@ export default function Page() {
       <section className="details-pane">
         {selectedWall && (
           <dl className="summary">
+            <div className="summary__accent">
+              <dt>Кусков на стене</dt>
+              <dd>{selectedWall.metrics.pieceCount}</dd>
+            </div>
+            <div className="summary__accent">
+              <dt>Разных подрезок</dt>
+              <dd>{selectedWall.metrics.distinctCuts}</dd>
+            </div>
             <div className="summary__accent">
               <dt>Подрезка на уровне глаз</dt>
               <dd>{selectedWall.metrics.eyeLevelCut} мм</dd>

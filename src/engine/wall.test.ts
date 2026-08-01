@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { generateWallVariants } from './wallVariants';
+import { generateWallVariants, rankWallVariants } from './wallVariants';
 import { EYE_BAND, wallCoverRects, wallEdgeHeights, wallOpening, wallSurface } from './wall';
 import type { Door, Layout, Room, RoomObject, Tile } from './types';
 
@@ -211,7 +211,31 @@ describe('плитка у дверного проёма', () => {
       for (const t of v.tiles) {
         const overlapW = Math.min(t.x + t.w, opening.x + opening.w) - Math.max(t.x, opening.x);
         const overlapH = Math.min(t.y + t.h, opening.y + opening.h) - Math.max(t.y, opening.y);
-        expect(overlapW <= 0 || overlapH <= 0).toBe(true);
+        if (overlapW <= 0 || overlapH <= 0) continue;
+
+        // Габарит может задевать проём, но только вырезанным углом.
+        expect(t.notch).toBeDefined();
+        expect(t.notch!.x).toBeLessThanOrEqual(Math.max(t.x, opening.x));
+        expect(t.notch!.x + t.notch!.w).toBeGreaterThanOrEqual(
+          Math.min(t.x + t.w, opening.x + opening.w),
+        );
+      }
+    }
+  });
+
+  it('плитку, задетую углом проёма, режет буквой Г одним элементом', () => {
+    const wide: Tile = { width: 1200, height: 600, grout: 2 };
+    const tall: Room = { width: 2600, height: 1700, ceiling: 2900 };
+    const variants = generateWallVariants({ room: tall, tile: wide, door, objects: [] }, 'bottom');
+
+    // Хотя бы где-то верхний угол проёма приходится на середину плитки.
+    expect(variants.some((v) => v.tiles.some((t) => t.notch !== undefined))).toBe(true);
+
+    for (const v of variants) {
+      for (const t of v.tiles.filter((x) => x.notch)) {
+        // Вырез лежит внутри плитки и не съедает её целиком.
+        expect(t.notch!.w).toBeLessThan(t.w);
+        expect(t.notch!.h).toBeLessThan(t.h);
       }
     }
   });
@@ -239,6 +263,137 @@ describe('плитка у дверного проёма', () => {
         const overlap =
           a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
         expect(overlap).toBe(false);
+      }
+    }
+  });
+});
+
+describe('выравнивание сетки по проёму', () => {
+  const wide: Tile = { width: 1200, height: 600, grout: 2 };
+  const tall: Room = { width: 2600, height: 1700, ceiling: 2900 };
+
+  it('предлагает поставить шов по краю проёма', () => {
+    const titles = generateWallVariants({ room: tall, tile: wide, door, objects: [] }, 'bottom').map(
+      (v) => v.title,
+    );
+
+    expect(titles.some((t) => t.includes('левому краю проёма'))).toBe(true);
+    expect(titles.some((t) => t.includes('правому краю проёма'))).toBe(true);
+  });
+
+  it('закрывает простенок одним куском вместо двух', () => {
+    const variants = generateWallVariants({ room: tall, tile: wide, door, objects: [] }, 'bottom');
+    // Простенок от угла до проёма: 1060 мм, целая плитка 1200 туда не влезает.
+    const piecesIn = (v: (typeof variants)[number]) =>
+      new Set(v.tiles.filter((t) => t.x + t.w <= 1061 && t.y > 600 && t.y < 2000).map((t) => t.w));
+
+    const aligned = variants.find((v) => v.title.includes('левому краю проёма'))!;
+    const centered = variants.find((v) => v.title.includes('плитка по центру'))!;
+
+    expect(piecesIn(aligned).size).toBe(1); // один кусок на всю ширину простенка
+    expect(piecesIn(centered).size).toBeGreaterThan(1); // а тут простенок дробится
+  });
+
+  it('без проёма таких вариантов не появляется', () => {
+    const titles = generateWallVariants({ room: tall, tile: wide, door, objects: [] }, 'top').map(
+      (v) => v.title,
+    );
+    expect(titles.some((t) => t.includes('проёма'))).toBe(false);
+  });
+});
+
+describe('порядок вариантов стены', () => {
+  const wide: Tile = { width: 1200, height: 600, grout: 2 };
+  const tall: Room = { width: 2600, height: 1700, ceiling: 2900 };
+
+  it('наверх поднимает наименее дроблёные', () => {
+    const variants = generateWallVariants({ room: tall, tile: wide, door, objects: [bath] }, 'bottom')
+      .sort(rankWallVariants);
+
+    for (let i = 1; i < variants.length; i++) {
+      expect(variants[i].metrics.pieceCount).toBeGreaterThanOrEqual(
+        variants[i - 1].metrics.pieceCount,
+      );
+    }
+  });
+
+  it('при равной дробности и разнотипности предпочитает крупную подрезку на глазах', () => {
+    const variants = generateWallVariants({ room: tall, tile: wide, door, objects: [bath] }, 'bottom')
+      .sort(rankWallVariants);
+
+    for (let i = 1; i < variants.length; i++) {
+      const prev = variants[i - 1].metrics;
+      const curr = variants[i].metrics;
+      if (curr.pieceCount === prev.pieceCount && curr.distinctCuts === prev.distinctCuts) {
+        expect(curr.eyeLevelCut).toBeLessThanOrEqual(prev.eyeLevelCut);
+      }
+    }
+  });
+
+  it('число кусков совпадает с числом плиток на развёртке', () => {
+    for (const v of generateWallVariants({ room: tall, tile: wide, door, objects: [bath] }, 'bottom')) {
+      expect(v.metrics.pieceCount).toBe(v.tiles.length);
+    }
+  });
+});
+
+describe('ориентация плитки на стенах', () => {
+  it('одна на все стены, а не подбирается для каждой', () => {
+    for (const wall of ['bottom', 'top', 'left', 'right'] as const) {
+      const variants = generateWallVariants({ room, tile, door, objects: [bath] }, wall, undefined, 0);
+      expect(variants.every((v) => v.layout.orientation === 0)).toBe(true);
+    }
+  });
+
+  it('поворот применяется ко всем вариантам разом', () => {
+    const turned = generateWallVariants({ room, tile, door, objects: [bath] }, 'left', undefined, 90);
+    expect(turned.every((v) => v.layout.orientation === 90)).toBe(true);
+  });
+});
+
+describe('разнотипность подрезок', () => {
+  const wide: Tile = { width: 1200, height: 600, grout: 2 };
+  const tall: Room = { width: 2600, height: 1700, ceiling: 2900 };
+
+  it('считает типоразмеры, а не штуки', () => {
+    for (const v of generateWallVariants({ room: tall, tile: wide, door, objects: [bath] }, 'bottom', undefined, 0)) {
+      const sizes = new Set(v.tiles.filter((t) => t.isCut).map((t) => `${t.w}×${t.h}`));
+      expect(v.metrics.distinctCuts).toBe(sizes.size);
+    }
+  });
+
+  it('перевязка, дробящая ряды на разные куски, уходит вниз списка', () => {
+    const ranked = generateWallVariants({ room: tall, tile: wide, door, objects: [bath] }, 'bottom', undefined, 0)
+      .sort(rankWallVariants);
+
+    // Первый вариант не должен быть тем, где каждый ряд режется по-своему.
+    expect(ranked[0].layout.rowShift).toBe('none');
+  });
+});
+
+describe('форма вырезанной плитки', () => {
+  const wide: Tile = { width: 1200, height: 600, grout: 2 };
+  const tall: Room = { width: 2600, height: 1700, ceiling: 2900 };
+
+  it('вырез примыкает к краю плитки, а не висит в середине', () => {
+    for (const v of generateWallVariants({ room: tall, tile: wide, door, objects: [] }, 'bottom', undefined, 0)) {
+      for (const t of v.tiles.filter((x) => x.notch)) {
+        const n = t.notch!;
+        const touchesEdge =
+          n.x <= t.x || n.y <= t.y || n.x + n.w >= t.x + t.w || n.y + n.h >= t.y + t.h;
+        expect(touchesEdge).toBe(true);
+      }
+    }
+  });
+
+  it('вырез не выходит за габарит плитки', () => {
+    for (const v of generateWallVariants({ room: tall, tile: wide, door, objects: [] }, 'bottom', undefined, 0)) {
+      for (const t of v.tiles.filter((x) => x.notch)) {
+        const n = t.notch!;
+        expect(n.x).toBeGreaterThanOrEqual(t.x);
+        expect(n.y).toBeGreaterThanOrEqual(t.y);
+        expect(n.x + n.w).toBeLessThanOrEqual(t.x + t.w);
+        expect(n.y + n.h).toBeLessThanOrEqual(t.y + t.h);
       }
     }
   });

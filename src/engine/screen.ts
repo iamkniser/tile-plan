@@ -114,6 +114,7 @@ export function generateScreenVariants(
   project: Project,
   objectId: string,
   floorLayout?: Layout,
+  orientation: 0 | 90 = 0,
 ): WallVariant[] {
   const objects = project.objects ?? [];
   const object = objects.find((o) => o.id === objectId);
@@ -133,5 +134,6 @@ export function generateScreenVariants(
     excluded: covers.filter((c) => c.h >= surface.height),
     edges: [],
     floorLayout,
+    orientation,
   });
 }

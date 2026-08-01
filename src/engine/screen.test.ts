@@ -85,8 +85,19 @@ describe('раскладка экрана', () => {
   });
 
   it('считает подрезки под тумбой скрытыми', () => {
-    const variants = generateScreenVariants({ room, tile, objects: [bath, cabinet] }, 'bath');
+    // Вертикальная плитка даёт ряд, целиком попадающий под тумбу.
+    const variants = generateScreenVariants(
+      { room, tile, objects: [bath, cabinet] },
+      'bath',
+      undefined,
+      90,
+    );
     expect(variants.some((v) => v.metrics.hiddenCutCount > 0)).toBe(true);
+  });
+
+  it('ориентация задаётся, а не перебирается', () => {
+    const variants = generateScreenVariants({ room, tile, objects: [bath, cabinet] }, 'bath');
+    expect(variants.every((v) => v.layout.orientation === 0)).toBe(true);
   });
 
   it('для несуществующего предмета возвращает пустой список', () => {

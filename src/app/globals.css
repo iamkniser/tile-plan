@@ -861,3 +861,15 @@ legend {
   stroke-width: 8;
   stroke-dasharray: 40 24;
 }
+
+.surfaces--sub {
+  align-items: center;
+  margin-top: -8px;
+}
+
+.surfaces__label {
+  margin-right: 4px;
+  color: var(--graphite);
+  font: 11px/1 var(--mono);
+  letter-spacing: 0.06em;
+}

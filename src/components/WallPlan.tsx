@@ -10,6 +10,48 @@ function fits(w: number, h: number, text: string): boolean {
 }
 
 /**
+ * Контур плитки с вырезом: шесть точек буквой Г.
+ *
+ * Вырез может прийтись на любой из четырёх углов, поэтому контур строится от
+ * фактического положения выреза, а не от заранее выбранного угла.
+ */
+function notchPath(
+  t: {
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    notch?: { x: number; y: number; w: number; h: number };
+  },
+  flip: (y: number, h: number) => number,
+): string {
+  const n = t.notch!;
+  const x0 = t.x;
+  const x1 = t.x + t.w;
+  const y0 = t.y;
+  const y1 = t.y + t.h;
+
+  // Внутренние границы выреза — те, что не совпадают с краем плитки.
+  const nx = n.x <= x0 ? n.x + n.w : n.x;
+  const ny = n.y <= y0 ? n.y + n.h : n.y;
+  const cornerLeft = n.x <= x0;
+  const cornerBottom = n.y <= y0;
+
+  // Обход в математических координатах, затем перевод в экранные.
+  const points: Array<[number, number]> = cornerLeft
+    ? cornerBottom
+      ? [[nx, y0], [x1, y0], [x1, y1], [x0, y1], [x0, ny], [nx, ny]]
+      : [[x0, y0], [x1, y0], [x1, y1], [nx, y1], [nx, ny], [x0, ny]]
+    : cornerBottom
+      ? [[x0, y0], [nx, y0], [nx, ny], [x1, ny], [x1, y1], [x0, y1]]
+      : [[x0, y0], [x1, y0], [x1, ny], [nx, ny], [nx, y1], [x0, y1]];
+
+  return (
+    points.map(([px, py], i) => `${i === 0 ? 'M' : 'L'} ${px} ${flip(py, 0)}`).join(' ') + ' Z'
+  );
+}
+
+/**
  * Развёртка стены: смотрим на стену прямо, пол снизу, потолок сверху.
  * В SVG ось Y растёт вниз, поэтому высота переворачивается при рендере.
  */
@@ -41,20 +83,21 @@ export function WallPlan({
       {variant.tiles.map((t, i) => {
         const y = flip(t.y, t.h);
         const hidden = variant.hiddenTiles[i];
-        const label = `${t.w}×${t.h}`;
+        // Плитку с вырезом режут буквой Г и кладут одним элементом, поэтому
+        // подписываем габарит целиком и отмечаем вырез.
+        const label = t.notch ? `${t.w}×${t.h} с вырезом` : `${t.w}×${t.h}`;
         const showLabel = t.isCut && !hidden && fits(t.w, t.h, label);
+        const className = ['tile', t.isCut ? 'tile--cut' : '', hidden ? 'tile--hidden' : '']
+          .filter(Boolean)
+          .join(' ');
 
         return (
           <g key={i}>
-            <rect
-              x={t.x}
-              y={y}
-              width={t.w}
-              height={t.h}
-              className={['tile', t.isCut ? 'tile--cut' : '', hidden ? 'tile--hidden' : '']
-                .filter(Boolean)
-                .join(' ')}
-            />
+            {t.notch ? (
+              <path d={notchPath(t, flip)} className={className} />
+            ) : (
+              <rect x={t.x} y={y} width={t.w} height={t.h} className={className} />
+            )}
             {showLabel && (
               <text
                 x={t.x + t.w / 2}

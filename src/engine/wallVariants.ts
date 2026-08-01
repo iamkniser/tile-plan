@@ -68,7 +68,21 @@ function heightCandidates(
   return [...byOffset.values()];
 }
 
-function widthCandidates(width: Mm, tileWidth: Mm, step: Mm, grout: Mm): Candidate[] {
+/**
+ * Кандидаты смещения сетки вдоль стены.
+ *
+ * Отдельно — выравнивание по вертикальным краям проёма. Между углом и проёмом
+ * остаётся простенок, куда целая плитка часто не влезает, и тогда решает не
+ * «влезет или нет», а сколько там будет кусков: при шве на краю проёма
+ * простенок закрывается одним куском вместо двух.
+ */
+function widthCandidates(
+  width: Mm,
+  tileWidth: Mm,
+  step: Mm,
+  grout: Mm,
+  verticals: Array<{ value: Mm; label: string }> = [],
+): Candidate[] {
   const list: Candidate[] = [
     { label: 'плитка по центру', offset: offsetFor('centerTile', width, tileWidth, step, grout) },
     { label: 'шов по центру', offset: offsetFor('centerJoint', width, tileWidth, step, grout) },
@@ -76,84 +90,84 @@ function widthCandidates(width: Mm, tileWidth: Mm, step: Mm, grout: Mm): Candida
     { label: 'целая от правого угла', offset: offsetFor('flushEnd', width, tileWidth, step, grout) },
   ];
 
+  for (const v of verticals) {
+    if (v.value <= 0 || v.value >= width) continue;
+    list.push({ label: v.label, offset: mod(v.value, step) });
+  }
+
   const byOffset = new Map<Mm, Candidate>();
   for (const c of list) if (!byOffset.has(c.offset)) byOffset.set(c.offset, c);
   return [...byOffset.values()];
 }
 
+/** Пересечение двух прямоугольников или null. */
+function intersect(a: Rect, b: Rect): Rect | null {
+  const x0 = Math.max(a.x, b.x);
+  const y0 = Math.max(a.y, b.y);
+  const x1 = Math.min(a.x + a.w, b.x + b.w);
+  const y1 = Math.min(a.y + a.h, b.y + b.h);
+  return x1 > x0 && y1 > y0 ? { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } : null;
+}
+
 /**
- * Вычитает зону из прямоугольника: возвращает то, что от него осталось.
+ * Вычитает зону из плитки.
  *
- * Кусков может быть до четырёх — по одному с каждой стороны зоны. Для плитки
- * у дверного проёма это ровно та часть, которую и режут по месту.
+ * Если зона срезает плитку насквозь — остаётся прямоугольник поменьше. Если
+ * зона задевает только угол, плитку режут буквой Г и кладут одним элементом:
+ * дробить её на два прямоугольника было бы враньём — на стене это один кусок.
  */
-function subtractRect(tile: Rect, zone: Rect): Rect[] {
-  const overlapX0 = Math.max(tile.x, zone.x);
-  const overlapY0 = Math.max(tile.y, zone.y);
-  const overlapX1 = Math.min(tile.x + tile.w, zone.x + zone.w);
-  const overlapY1 = Math.min(tile.y + tile.h, zone.y + zone.h);
+function subtractZone(tile: PlacedTile, zone: Rect): PlacedTile[] {
+  const overlap = intersect(tile, zone);
+  if (!overlap) return [tile];
 
-  // Не пересекаются — плитка цела.
-  if (overlapX1 <= overlapX0 || overlapY1 <= overlapY0) return [tile];
+  const coversWidth = overlap.x <= tile.x && overlap.x + overlap.w >= tile.x + tile.w;
+  const coversHeight = overlap.y <= tile.y && overlap.y + overlap.h >= tile.y + tile.h;
 
-  const parts: Rect[] = [];
-  if (overlapY0 > tile.y) {
-    parts.push({ x: tile.x, y: tile.y, w: tile.w, h: overlapY0 - tile.y });
-  }
-  if (overlapY1 < tile.y + tile.h) {
-    parts.push({ x: tile.x, y: overlapY1, w: tile.w, h: tile.y + tile.h - overlapY1 });
-  }
-  if (overlapX0 > tile.x) {
-    parts.push({ x: tile.x, y: overlapY0, w: overlapX0 - tile.x, h: overlapY1 - overlapY0 });
-  }
-  if (overlapX1 < tile.x + tile.w) {
-    parts.push({ x: overlapX1, y: overlapY0, w: tile.x + tile.w - overlapX1, h: overlapY1 - overlapY0 });
+  // Зона поглотила плитку целиком.
+  if (coversWidth && coversHeight) return [];
+
+  // Срез насквозь по горизонтали: остаётся полоса сверху или снизу.
+  if (coversWidth) {
+    const parts: PlacedTile[] = [];
+    if (overlap.y > tile.y) {
+      parts.push({ ...tile, h: overlap.y - tile.y, isCut: true });
+    }
+    if (overlap.y + overlap.h < tile.y + tile.h) {
+      const y = overlap.y + overlap.h;
+      parts.push({ ...tile, y, h: tile.y + tile.h - y, isCut: true });
+    }
+    return parts;
   }
 
-  return parts.filter((p) => p.w > 0 && p.h > 0);
+  // Срез насквозь по вертикали: остаётся полоса слева или справа.
+  if (coversHeight) {
+    const parts: PlacedTile[] = [];
+    if (overlap.x > tile.x) {
+      parts.push({ ...tile, w: overlap.x - tile.x, isCut: true });
+    }
+    if (overlap.x + overlap.w < tile.x + tile.w) {
+      const x = overlap.x + overlap.w;
+      parts.push({ ...tile, x, w: tile.x + tile.w - x, isCut: true });
+    }
+    return parts;
+  }
+
+  // Зона задела угол или середину края — режем буквой Г, одним элементом.
+  return [{ ...tile, isCut: true, notch: overlap }];
 }
 
 /**
  * Убирает из раскладки то, что не облицовывают: пространство за ванной и
- * дверной проём. Плитка, задетая зоной, режется по её границе и становится
- * подрезкой; попавшая внутрь целиком — исчезает.
+ * дверной проём.
  */
 function clipToExcluded(tiles: PlacedTile[], zones: Rect[]): PlacedTile[] {
   if (zones.length === 0) return tiles;
 
-  const result: PlacedTile[] = [];
-
-  for (const t of tiles) {
-    let parts: Rect[] = [t];
-    for (const zone of zones) {
-      parts = parts.flatMap((p) => subtractRect(p, zone));
-    }
-
-    for (const p of parts) {
-      const trimmed = p.w !== t.w || p.h !== t.h;
-      result.push({
-        ...t,
-        x: p.x,
-        y: p.y,
-        w: p.w,
-        h: p.h,
-        isCut: t.isCut || trimmed,
-        cutSides: trimmed ? cutSidesOf(p, t) : t.cutSides,
-      });
-    }
+  let current = tiles;
+  for (const zone of zones) {
+    current = current.flatMap((t) => subtractZone(t, zone));
   }
-
-  return result;
-}
-
-/** По каким сторонам кусок отрезан от исходной плитки. */
-function cutSidesOf(part: Rect, whole: Rect): Side[] {
-  const sides: Side[] = [];
-  if (part.x > whole.x) sides.push('left');
-  if (part.x + part.w < whole.x + whole.w) sides.push('right');
-  if (part.y > whole.y) sides.push('bottom');
-  if (part.y + part.h < whole.y + whole.h) sides.push('top');
-  return sides;
+  return current;
 }
 
 function uniqueSorted(values: Mm[]): Mm[] {
@@ -207,6 +221,8 @@ function computeWallMetrics(
   const floorJointOffset = Math.round(Math.min(dj, floorJoint.step - dj));
 
   return {
+    pieceCount: tiles.length,
+    distinctCuts: new Set(cutTiles.map((t) => `${t.w}×${t.h}`)).size,
     minCut: cutTiles.length > 0 ? Math.min(...cutTiles.map(cutSize)) : maxPossible,
     minVisibleCut: visibleCuts.length > 0 ? Math.min(...visibleCuts) : maxPossible,
     eyeLevelCut: eyeCuts.length > 0 ? Math.min(...eyeCuts) : maxPossible,
@@ -235,6 +251,7 @@ export function generateWallVariants(
   project: Project,
   wall: Side,
   floorLayout?: Layout,
+  orientation: Orientation = 0,
 ): WallVariant[] {
   const { room, door } = project;
   const objects = project.objects ?? [];
@@ -246,6 +263,7 @@ export function generateWallVariants(
     excluded: wallExcludedRects(room, wall, objects, door),
     edges: wallEdgeHeights(room, wall, objects),
     floorLayout,
+    orientation,
   });
 }
 
@@ -257,6 +275,12 @@ export interface SurfaceInput {
   excluded: Rect[];
   edges: Array<{ value: Mm; kind: string }>;
   floorLayout?: Layout;
+  /**
+   * Ориентация плитки на стенах — решение на всё помещение, а не на отдельную
+   * поверхность: если на одной стене плитка лежит, а на соседней стоит, рисунок
+   * разъезжается на углу. Поэтому её задают, а не перебирают.
+   */
+  orientation: Orientation;
 }
 
 export function generateSurfaceVariants(
@@ -278,7 +302,20 @@ export function generateSurfaceVariants(
 
   const labelFor = (kind: string) => LABELS[kind] ?? kind;
 
-  const orientations: Orientation[] = tile.width === tile.height ? [0] : [0, 90];
+  // Вертикальные линии, по которым имеет смысл поставить шов: края проёма
+  // и края предметов вдоль стены.
+  const verticals = [
+    ...input.excluded.flatMap((z) => [
+      { value: z.x, label: 'шов по левому краю проёма' },
+      { value: z.x + z.w, label: 'шов по правому краю проёма' },
+    ]),
+    ...input.covers.flatMap((c) => [
+      { value: c.x, label: 'шов по краю мебели' },
+      { value: c.x + c.w, label: 'шов по краю мебели' },
+    ]),
+  ];
+
+  const orientations: Orientation[] = [input.orientation];
   const shifts = rowShiftOptions(tile)
     .filter((o) => o.allowed)
     .map((o) => o.id);
@@ -293,7 +330,7 @@ export function generateSurfaceVariants(
       ? floorJointAlong(room, wall, floorLayout.ox, floorLayout.oy, floorStep.x, floorStep.y)
       : { offset: 0, step: floorStep.x };
 
-    const across = widthCandidates(surface.width, eff.w, step.x, tile.grout);
+    const across = widthCandidates(surface.width, eff.w, step.x, tile.grout, verticals);
     const up = heightCandidates(
       surface.height,
       eff.h,
@@ -347,6 +384,22 @@ export function generateSurfaceVariants(
 
 /** Подрезка тоньше этого на уровне глаз читается как брак укладки. */
 export const MIN_EYE_LEVEL_CUT: Mm = 100;
+
+/**
+ * Порядок вариантов стены: сначала наименее дроблёные, затем те, где кусков
+ * меньше по типоразмерам, и только потом — с крупной подрезкой на уровне глаз.
+ *
+ * Симметрии здесь не ищем: её ломают проём и мебель, а взгляд цепляется
+ * за дробность, а не за ось.
+ */
+export function rankWallVariants(a: WallVariant, b: WallVariant): number {
+  return (
+    a.metrics.pieceCount - b.metrics.pieceCount ||
+    a.metrics.distinctCuts - b.metrics.distinctCuts ||
+    b.metrics.eyeLevelCut - a.metrics.eyeLevelCut ||
+    a.metrics.cutTileCount - b.metrics.cutTileCount
+  );
+}
 
 /**
  * Отсев вариантов с тонкой подрезкой там, куда смотрят стоя. Если правило
