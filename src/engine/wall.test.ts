@@ -156,3 +156,48 @@ describe('варианты раскладки стены', () => {
     }
   });
 });
+
+describe('за ванной плитки нет', () => {
+  const noTilesBehind: RoomObject = { ...bath, tiledBehind: false };
+
+  it('плитка не заходит за борт ванны', () => {
+    const variants = generateWallVariants(
+      { room, tile, door, objects: [noTilesBehind] },
+      'left',
+    );
+
+    for (const v of variants) {
+      // Ванна занимает всю длину стены, поэтому ниже борта плитки быть не должно.
+      expect(v.tiles.every((t) => t.y >= 600)).toBe(true);
+    }
+  });
+
+  it('нижний ряд режется по борту и считается подрезкой', () => {
+    const variants = generateWallVariants(
+      { room, tile, door, objects: [noTilesBehind] },
+      'left',
+    );
+    const startsAtRim = variants.find((v) => v.tiles.some((t) => t.y === 600 && !t.isCut));
+
+    expect(startsAtRim).toBeDefined();
+  });
+
+  it('с плиткой за ванной раскладка идёт до пола', () => {
+    const tiled: RoomObject = { ...bath, tiledBehind: true };
+    const variants = generateWallVariants({ room, tile, door, objects: [tiled] }, 'left');
+
+    expect(variants.some((v) => v.tiles.some((t) => t.y === 0))).toBe(true);
+  });
+
+  it('в дверном проёме плитки нет', () => {
+    const variants = generateWallVariants({ room, tile, door, objects: [] }, 'bottom');
+    const opening = { x: 1060, w: 900, h: 2100 };
+
+    for (const v of variants) {
+      const inside = v.tiles.filter(
+        (t) => t.x >= opening.x && t.x + t.w <= opening.x + opening.w && t.y + t.h <= opening.h,
+      );
+      expect(inside).toHaveLength(0);
+    }
+  });
+});

@@ -27,6 +27,8 @@ export interface Fixture {
   bottomHeight: number;
   /** Высота верхней кромки: борт ванны, верх тумбы. Нужна для раскладки стен. */
   topHeight: number;
+  /** Класть ли плитку на стену за предметом. За ванной обычно не кладут. */
+  tiledBehind: boolean;
 }
 
 /** Что сейчас раскладываем: пол или одна из стен. */
@@ -62,6 +64,7 @@ export function fixtureObject(f: Fixture, room: Room): RoomObject | null {
     kind: f.kind,
     bottomHeight: f.bottomHeight,
     topHeight: f.topHeight,
+    tiledBehind: f.tiledBehind,
   };
 
   switch (f.wall) {
@@ -111,6 +114,8 @@ export const DEFAULTS: { room: Room; tile: Tile; door: Door; fixtures: Fixture[]
       bottomHeight: 0,
       // Борт ванны — сильная горизонтальная линия, с ней совмещают шов.
       topHeight: 600,
+      // За ванной стену не облицовывают: плитка начинается от борта.
+      tiledBehind: false,
     },
     // Подвесная тумба у дальней стены: от края ванны до правой стены,
     // нижняя кромка на 250 мм, верхняя — на 800 мм.
@@ -124,6 +129,7 @@ export const DEFAULTS: { room: Room; tile: Tile; door: Door; fixtures: Fixture[]
       offset: 700,
       bottomHeight: 250,
       topHeight: 800,
+      tiledBehind: true,
     },
     // Подвесной унитаз у правой стены. Фальш-стена инсталляции уже входит
     // в габарит помещения, поэтому отдельным объектом не задаётся.
@@ -137,6 +143,7 @@ export const DEFAULTS: { room: Room; tile: Tile; door: Door; fixtures: Fixture[]
       offset: 330,
       bottomHeight: 400,
       topHeight: 400,
+      tiledBehind: true,
     },
   ],
 };

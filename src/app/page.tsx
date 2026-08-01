@@ -11,6 +11,7 @@ import {
   generateVariants,
   generateWallVariants,
   rejectImpractical,
+  rejectWallVariants,
   rowShiftOptions,
   viewerPoint,
   wallLength,
@@ -181,16 +182,13 @@ export default function Page() {
   const floorVariant = variants[Math.min(selectedIndex, variants.length - 1)];
 
   // Раскладка стены считается от выбранного пола: так видно, расходятся ли швы.
-  const wallVariants = useMemo(
-    () =>
-      surface === 'floor'
-        ? []
-        : generateWallVariants({ room, tile, door, objects }, surface, floorVariant.layout).slice(
-            0,
-            MAX_VARIANTS,
-          ),
-    [surface, room, tile, door, objects, floorVariant],
-  );
+  const { wallVariants, wallRejected } = useMemo(() => {
+    if (surface === 'floor') return { wallVariants: [], wallRejected: 0 };
+
+    const all = generateWallVariants({ room, tile, door, objects }, surface, floorVariant.layout);
+    const { kept, rejected } = rejectWallVariants(all);
+    return { wallVariants: kept.slice(0, MAX_VARIANTS), wallRejected: rejected };
+  }, [surface, room, tile, door, objects, floorVariant]);
 
   const selected = floorVariant;
   const selectedWall =
@@ -337,6 +335,14 @@ export default function Page() {
                   onChange={(v) => setFixture(f.id, { topHeight: v })}
                   min={0}
                 />
+                <label className="field field--check">
+                  <span>Плитка за ним</span>
+                  <input
+                    type="checkbox"
+                    checked={f.tiledBehind}
+                    onChange={(e) => setFixture(f.id, { tiledBehind: e.target.checked })}
+                  />
+                </label>
               </>
             )}
           </fieldset>
@@ -417,13 +423,19 @@ export default function Page() {
 
           {!halfBlocked.allowed && <p className="notice">{halfBlocked.reason}</p>}
 
-          {rejections.length > 0 && (
+          {!selectedWall && rejections.length > 0 && (
             <ul className="rejections">
               {rejections.map((r) => (
                 <li key={r.reason}>
                   отсеяно {r.count} — {r.reason}
                 </li>
               ))}
+            </ul>
+          )}
+
+          {selectedWall && wallRejected > 0 && (
+            <ul className="rejections">
+              <li>отсеяно {wallRejected} — подрезка тоньше 100 мм на уровне глаз</li>
             </ul>
           )}
 

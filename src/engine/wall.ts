@@ -90,6 +90,32 @@ export function wallCoverRects(room: Room, wall: Side, objects: RoomObject[]): W
   return rects;
 }
 
+/**
+ * Зоны, которые вообще не облицовывают: пространство за ванной и дверной проём.
+ *
+ * Отличие от `wallCoverRects` принципиальное. Скрытая зона — плитка там есть,
+ * просто её не видно. Исключённая — плитки нет, и нижний ряд над ней режется
+ * по кромке предмета, а не по полу.
+ */
+export function wallExcludedRects(
+  room: Room,
+  wall: Side,
+  objects: RoomObject[],
+  door?: Door,
+): Rect[] {
+  const zones: Rect[] = [];
+
+  for (const cover of wallCoverRects(room, wall, objects)) {
+    const object = objects.find((o) => o.id === cover.id);
+    if (object?.tiledBehind === false) zones.push(cover);
+  }
+
+  const opening = wallOpening(room, wall, door);
+  if (opening) zones.push(opening);
+
+  return zones;
+}
+
 /** Дверной проём на развёртке: плитку туда не кладут. */
 export function wallOpening(
   room: Room,

@@ -17,6 +17,7 @@ const state: SharedState = {
       offset: 0,
       bottomHeight: 0,
       topHeight: 600,
+      tiledBehind: false,
     },
   ],
 };
@@ -69,6 +70,14 @@ describe('переносимое состояние', () => {
 
   it('игнорирует состояние чужой версии', () => {
     expect(decodeState('99.2600.1700.1200.600.2.b.1060.900.150.2500')).toBeNull();
+  });
+
+  it('за ванной по умолчанию плитки нет, за прочей мебелью есть', () => {
+    const v3 = '3.2600.1700.1200.600.2.b.1060.900.150.2500.b.1.l.1700.700.0.0.600';
+    expect(decodeState(v3)?.fixtures[0].tiledBehind).toBe(false);
+
+    const cabinet = '3.2600.1700.1200.600.2.b.1060.900.150.2500.c.1.t.1900.500.700.250.800';
+    expect(decodeState(cabinet)?.fixtures[0].tiledBehind).toBe(true);
   });
 
   it('читает ссылки второй версии и достраивает высоты', () => {

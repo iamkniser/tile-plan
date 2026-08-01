@@ -7,7 +7,7 @@ import {
   floorJointAlong,
   wallCoverRects,
   wallEdgeHeights,
-  wallOpening,
+  wallExcludedRects,
   wallSurface,
 } from './wall';
 import { rowShiftOptions } from './index';
@@ -41,15 +41,26 @@ function heightCandidates(
   grout: Mm,
   edges: Array<{ value: Mm; kind: string }>,
   labelFor: (kind: string) => string,
+  /** Отметка, с которой начинается облицовка: 0 — от пола, иначе борт ванны. */
+  tilingBottom: Mm,
 ): Candidate[] {
   const list: Candidate[] = [
-    { label: 'целая от пола', offset: offsetFor('flushStart', height, tileHeight, step, grout) },
+    {
+      label: tilingBottom > 0 ? 'целая от низа облицовки' : 'целая от пола',
+      offset: offsetFor('flushStart', height, tileHeight, step, grout),
+    },
     { label: 'целая под потолок', offset: offsetFor('flushEnd', height, tileHeight, step, grout) },
   ];
 
   for (const edge of edges) {
     if (edge.value <= 0 || edge.value >= height) continue;
-    list.push({ label: `шов по кромке: ${labelFor(edge.kind)}`, offset: mod(edge.value, step) });
+    // От кромки, за которой облицовки нет, плитка именно начинается, а не
+    // примыкает швом: назвать это «швом по кромке» значило бы соврать.
+    const label =
+      edge.value === tilingBottom
+        ? `целая от кромки: ${labelFor(edge.kind)}`
+        : `шов по кромке: ${labelFor(edge.kind)}`;
+    list.push({ label, offset: mod(edge.value, step) });
   }
 
   const byOffset = new Map<Mm, Candidate>();
@@ -68,6 +79,64 @@ function widthCandidates(width: Mm, tileWidth: Mm, step: Mm, grout: Mm): Candida
   const byOffset = new Map<Mm, Candidate>();
   for (const c of list) if (!byOffset.has(c.offset)) byOffset.set(c.offset, c);
   return [...byOffset.values()];
+}
+
+/**
+ * Убирает из раскладки то, что не облицовывают.
+ *
+ * Плитка, целиком попавшая в исключённую зону, выбрасывается; задетая с краю —
+ * обрезается по её границе и считается подрезкой. Обрезка верна, пока зона
+ * примыкает к краю развёртки: за ванной и в дверном проёме это так.
+ */
+function clipToExcluded(tiles: PlacedTile[], zones: Rect[]): PlacedTile[] {
+  if (zones.length === 0) return tiles;
+
+  const result: PlacedTile[] = [];
+
+  for (const t of tiles) {
+    let { x, y, w, h } = t;
+    let cutBySide: Side | null = null;
+    let dropped = false;
+
+    for (const z of zones) {
+      const overlapW = Math.min(x + w, z.x + z.w) - Math.max(x, z.x);
+      const overlapH = Math.min(y + h, z.y + z.h) - Math.max(y, z.y);
+      if (overlapW <= 0 || overlapH <= 0) continue;
+
+      // Плитка целиком внутри зоны — её просто нет.
+      if (x >= z.x && x + w <= z.x + z.w && y >= z.y && y + h <= z.y + z.h) {
+        dropped = true;
+        break;
+      }
+
+      // Зона накрывает плитку по всей ширине снизу: поднимаем нижний край.
+      if (x >= z.x && x + w <= z.x + z.w && y < z.y + z.h) {
+        const newY = z.y + z.h;
+        h -= newY - y;
+        y = newY;
+        cutBySide = 'bottom';
+      }
+    }
+
+    if (dropped || h <= 0 || w <= 0) continue;
+
+    const changed = h !== t.h || y !== t.y;
+    result.push(
+      changed
+        ? {
+            ...t,
+            x,
+            y,
+            w,
+            h,
+            isCut: true,
+            cutSides: cutBySide ? [...new Set([...t.cutSides, cutBySide])] : t.cutSides,
+          }
+        : t,
+    );
+  }
+
+  return result;
 }
 
 function uniqueSorted(values: Mm[]): Mm[] {
@@ -154,9 +223,14 @@ export function generateWallVariants(
   const objects = project.objects ?? [];
   const surface = wallSurface(room, wall);
 
-  const covers = wallCoverRects(room, wall, objects);
-  const opening = wallOpening(room, wall, door);
-  const blocked: Rect[] = opening ? [...covers, opening] : covers;
+  const covers: Rect[] = wallCoverRects(room, wall, objects);
+  // Зоны, где плитки нет вовсе: за ванной и в дверном проёме.
+  const excluded = wallExcludedRects(room, wall, objects, door);
+
+  // Если у пола есть зона без облицовки, плитка начинается от её верхней кромки.
+  const tilingBottom = excluded
+    .filter((z) => z.y <= 0 && z.w >= surface.width / 2)
+    .reduce((max, z) => Math.max(max, z.y + z.h), 0);
 
   const edges = wallEdgeHeights(room, wall, objects);
   const labelFor = (kind: string) => LABELS[kind] ?? kind;
@@ -177,18 +251,25 @@ export function generateWallVariants(
       : { offset: 0, step: floorStep.x };
 
     const across = widthCandidates(surface.width, eff.w, step.x, tile.grout);
-    const up = heightCandidates(surface.height, eff.h, step.y, tile.grout, edges, labelFor);
+    const up = heightCandidates(
+      surface.height,
+      eff.h,
+      step.y,
+      tile.grout,
+      edges,
+      labelFor,
+      tilingBottom,
+    );
 
     for (const rowShift of shifts) {
       for (const cx of across) {
         for (const cy of up) {
           const layout: Layout = { ox: cx.offset, oy: cy.offset, orientation, rowShift };
-          const tiles = buildTilesIn(
-            { x0: 0, y0: 0, x1: surface.width, y1: surface.height },
-            tile,
-            layout,
+          const tiles = clipToExcluded(
+            buildTilesIn({ x0: 0, y0: 0, x1: surface.width, y1: surface.height }, tile, layout),
+            excluded,
           );
-          const hidden = tiles.map((t) => isHiddenBy(t, blocked));
+          const hidden = tiles.map((t) => isHiddenBy(t, covers));
 
           variants.push({
             wall,
@@ -219,6 +300,23 @@ export function generateWallVariants(
   }
 
   return [...byKey.values()];
+}
+
+/** Подрезка тоньше этого на уровне глаз читается как брак укладки. */
+export const MIN_EYE_LEVEL_CUT: Mm = 100;
+
+/**
+ * Отсев вариантов с тонкой подрезкой там, куда смотрят стоя. Если правило
+ * отбросило бы всё, оно пропускается: показать плохой вариант честнее.
+ */
+export function rejectWallVariants(variants: WallVariant[]): {
+  kept: WallVariant[];
+  rejected: number;
+} {
+  const kept = variants.filter((v) => v.metrics.eyeLevelCut >= MIN_EYE_LEVEL_CUT);
+  return kept.length > 0
+    ? { kept, rejected: variants.length - kept.length }
+    : { kept: variants, rejected: 0 };
 }
 
 const LABELS: Record<string, string> = {

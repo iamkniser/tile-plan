@@ -25,7 +25,7 @@ const URL_KEY = 'p';
  * мессенджеры обрезают. Здесь те же данные укладываются в сотню символов,
  * причём без base64: строка и так безопасна для адреса.
  */
-const VERSION = 3;
+const VERSION = 4;
 
 const DEFAULT_CEILING = 2500;
 
@@ -86,6 +86,7 @@ export function encodeState(state: SharedState): string {
       f.offset,
       f.bottomHeight,
       f.topHeight,
+      f.tiledBehind ? 1 : 0,
     );
   }
 
@@ -93,7 +94,7 @@ export function encodeState(state: SharedState): string {
 }
 
 const HEAD_FIELDS = 11;
-const FIXTURE_FIELDS = 8;
+const FIXTURE_FIELDS = 9;
 
 /** Возвращает null на любом мусоре: чужая ссылка не должна ронять страницу. */
 export function decodeState(encoded: string): SharedState | null {
@@ -103,6 +104,7 @@ export function decodeState(encoded: string): SharedState | null {
   // Второй версии не хватало высоты потолка и высот предметов: читаем её той же
   // разборкой, недостающее достраиваем — иначе уже разосланные ссылки протухнут.
   if (version === 2 && parts.length >= 10) return decodeCompact(parts, 10, 7);
+  if (version === 3 && parts.length >= 11) return decodeCompact(parts, 11, 8);
   if (version === VERSION && parts.length >= HEAD_FIELDS) {
     return decodeCompact(parts, HEAD_FIELDS, FIXTURE_FIELDS);
   }
@@ -140,6 +142,8 @@ function decodeCompact(parts: string[], headFields: number, fixtureFields: numbe
     const values = [num(i + 3), num(i + 4), num(i + 5), num(i + 6)];
     if (values.some((v) => v === null)) return null;
     const top = fixtureFields > 7 ? num(i + 7) : null;
+    // Плитку за ванной по умолчанию не кладут — так это и было до появления поля.
+    const tiledBehind = fixtureFields > 8 ? parts[i + 8] === '1' : kind !== 'bath';
 
     fixtures.push({
       id: kind,
@@ -151,6 +155,7 @@ function decodeCompact(parts: string[], headFields: number, fixtureFields: numbe
       offset: values[2]!,
       bottomHeight: values[3]!,
       topHeight: top ?? DEFAULT_TOP[kind],
+      tiledBehind,
     });
   }
 
@@ -182,6 +187,7 @@ function legacyDecode(encoded: string): SharedState | null {
       fixtures: state.fixtures.map((f) => ({
         ...f,
         topHeight: f.topHeight ?? DEFAULT_TOP[f.kind],
+        tiledBehind: f.tiledBehind ?? f.kind !== 'bath',
       })),
     };
   } catch {
