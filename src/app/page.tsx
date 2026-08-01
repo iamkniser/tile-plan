@@ -5,6 +5,7 @@ import { LayoutPlan } from '@/components/LayoutPlan';
 import {
   OBJECT_LABEL,
   buildInstructions,
+  buildRationale,
   coverRects,
   generateVariants,
   rejectImpractical,
@@ -15,6 +16,7 @@ import {
   type Variant,
 } from '@/engine';
 import { fixtureObjects, useProject } from '@/store';
+import { loadState, saveState, shareUrl } from '@/share';
 
 const MAX_VARIANTS = 12;
 const ROW_SHIFT_LABEL: Record<string, string> = {
@@ -91,8 +93,19 @@ function NumberField({
 }
 
 export default function Page() {
-  const { room, tile, door, fixtures, selectedIndex, setRoom, setTile, setDoor, setFixture, select } =
-    useProject();
+  const {
+    room,
+    tile,
+    door,
+    fixtures,
+    selectedIndex,
+    setRoom,
+    setTile,
+    setDoor,
+    setFixture,
+    select,
+    restore,
+  } = useProject();
 
   // На телефоне форма заняла бы весь первый экран, поэтому там она свёрнута,
   // а на широком экране открыта сразу.
@@ -100,6 +113,26 @@ export default function Page() {
   useEffect(() => {
     setParamsOpen(window.matchMedia('(min-width: 901px)').matches);
   }, []);
+
+  // Состояние восстанавливаем после монтирования: на сервере ни ссылки,
+  // ни хранилища нет, и разметка разошлась бы с клиентской.
+  const [restored, setRestored] = useState(false);
+  useEffect(() => {
+    const saved = loadState();
+    if (saved) restore(saved);
+    setRestored(true);
+  }, [restore]);
+
+  useEffect(() => {
+    if (restored) saveState({ v: 1, room, tile, door, fixtures });
+  }, [restored, room, tile, door, fixtures]);
+
+  const [copied, setCopied] = useState(false);
+  async function copyLink() {
+    await navigator.clipboard.writeText(shareUrl({ v: 1, room, tile, door, fixtures }));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
 
   const objects = useMemo(() => fixtureObjects(fixtures, room), [fixtures, room]);
   // Зоны, реально закрытые от взгляда: под подвесной мебелью пол просматривается.
@@ -127,6 +160,7 @@ export default function Page() {
   const selected = variants[Math.min(selectedIndex, variants.length - 1)];
 
   const halfBlocked = rowShiftOptions(tile).find((o) => o.id === 'half')!;
+  const rationale = useMemo(() => buildRationale(selected, variants), [selected, variants]);
 
   const total = selected.tiles.length;
   const area = (room.width * room.height) / 1_000_000;
@@ -138,6 +172,9 @@ export default function Page() {
         <span className="stamp__spec">
           пол {room.width}×{room.height} · плитка {tile.width}×{tile.height} · шов {tile.grout}
         </span>
+        <button type="button" className="link stamp__share" onClick={copyLink}>
+          {copied ? 'ссылка скопирована' : 'скопировать ссылку'}
+        </button>
         <p className="lead">
           Откуда начинать раскладку и где окажутся подрезки. Вид от порога.
         </p>
@@ -329,6 +366,25 @@ export default function Page() {
       </section>
 
       <section className="details-pane">
+        <section className="rationale">
+          <h3>Почему этот вариант</h3>
+          {rationale.pros.length > 0 && (
+            <ul className="rationale__pros">
+              {rationale.pros.map((p) => (
+                <li key={p}>{p}</li>
+              ))}
+            </ul>
+          )}
+          {rationale.cons.length > 0 && (
+            <ul className="rationale__cons">
+              {rationale.cons.map((c) => (
+                <li key={c}>{c}</li>
+              ))}
+            </ul>
+          )}
+          {rationale.tradeoff && <p className="rationale__tradeoff">{rationale.tradeoff}</p>}
+        </section>
+
         <ul className="legend">
           <li>
             <span className="swatch swatch--whole" />целая плитка

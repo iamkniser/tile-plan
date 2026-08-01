@@ -38,6 +38,8 @@ interface State {
   setDoor: (patch: Partial<Door>) => void;
   setFixture: (id: string, patch: Partial<Fixture>) => void;
   select: (index: number) => void;
+  /** Применить состояние из ссылки или прошлого сеанса. */
+  restore: (state: { room: Room; tile: Tile; door: Door; fixtures: Fixture[] }) => void;
 }
 
 /** Габаритный прямоугольник предмета, прижатого к своей стене. */
@@ -133,4 +135,5 @@ export const useProject = create<State>((set) => ({
       selectedIndex: 0,
     })),
   select: (index) => set({ selectedIndex: index }),
+  restore: (state) => set({ ...state, selectedIndex: 0 }),
 }));

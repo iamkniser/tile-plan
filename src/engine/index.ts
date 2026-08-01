@@ -19,6 +19,8 @@ export { axisCandidates, strategyLabel } from './strategies';
 export { EYE_HEIGHT, coverRects, hiddenFlags, isHiddenBy, objectEdges, visibleDepthUnder } from './objects';
 export type { Rect } from './objects';
 export { buildInstructions, sideName } from './instructions';
+export { buildRationale } from './rationale';
+export type { Rationale } from './rationale';
 export { buildThresholdTiles, computeThresholdMetrics, thresholdBounds } from './threshold';
 export {
   computeEntryMetrics,
