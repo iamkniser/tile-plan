@@ -1,0 +1,18 @@
+# зависимости
+node_modules
+
+# сборка
+.next
+out
+*.tsbuildinfo
+next-env.d.ts
+
+# окружение
+.env*.local
+.vercel
+
+# система
+.DS_Store
+
+# локальные настройки Claude Code
+.claude/settings.local.json
