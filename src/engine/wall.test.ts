@@ -191,7 +191,8 @@ describe('за ванной плитки нет', () => {
 
   it('в дверном проёме плитки нет', () => {
     const variants = generateWallVariants({ room, tile, door, objects: [] }, 'bottom');
-    const opening = { x: 1060, w: 900, h: 2100 };
+    // Позицию берём у движка: на развёртке она зависит от направления отсчёта.
+    const opening = wallOpening(room, 'bottom', door)!;
 
     for (const v of variants) {
       const inside = v.tiles.filter(
@@ -205,7 +206,7 @@ describe('за ванной плитки нет', () => {
 describe('плитка у дверного проёма', () => {
   it('не заходит внутрь проёма', () => {
     const variants = generateWallVariants({ room, tile, door, objects: [] }, 'bottom');
-    const opening = { x: 1060, y: 0, w: 900, h: 2100 };
+    const opening = wallOpening(room, 'bottom', door)!;
 
     for (const v of variants) {
       for (const t of v.tiles) {
@@ -242,10 +243,13 @@ describe('плитка у дверного проёма', () => {
 
   it('обрезанный проёмом кусок считается подрезкой, а не целой плиткой', () => {
     const variants = generateWallVariants({ room, tile, door, objects: [] }, 'bottom');
+    const opening = wallOpening(room, 'bottom', door)!;
 
     for (const v of variants) {
       // Кусок, примыкающий к краю проёма, обязан быть помечен как резаный.
-      const touching = v.tiles.filter((t) => t.x + t.w === 1060 || t.x === 1960);
+      const touching = v.tiles.filter(
+        (t) => t.x + t.w === opening.x || t.x === opening.x + opening.w,
+      );
       for (const t of touching) {
         if (t.w < 300) expect(t.isCut).toBe(true);
       }
@@ -396,5 +400,40 @@ describe('форма вырезанной плитки', () => {
         expect(n.y + n.h).toBeLessThanOrEqual(t.y + t.h);
       }
     }
+  });
+});
+
+describe('направление развёртки', () => {
+  it('на дальней стене левая стена помещения остаётся слева', () => {
+    // Ванна стоит у левой стены; стоя лицом к дальней, видим её слева.
+    const [rect] = wallCoverRects(room, 'top', [bath]);
+    expect(rect.x).toBe(0);
+  });
+
+  it('на ближней стене отсчёт разворачивается', () => {
+    // Стоя лицом к стене с дверью, наблюдатель смотрит навстречу оси X.
+    const opening = wallOpening(room, 'bottom', door)!;
+    // Проём на 1060..1960 от левого угла помещения превращается в 640..1540.
+    expect(opening.x).toBe(room.width - 1960);
+  });
+
+  it('на левой стене отсчёт идёт по глубине помещения', () => {
+    const near: RoomObject = { ...bath, h: 400, topHeight: 600 };
+    const [rect] = wallCoverRects(room, 'left', [near]);
+    expect(rect.x).toBe(0); // предмет у ближнего угла — слева на развёртке
+  });
+
+  it('на правой стене отсчёт зеркален левой', () => {
+    const near: RoomObject = {
+      ...bath,
+      x: room.width - 700,
+      y: 0,
+      h: 400,
+      w: 700,
+      topHeight: 600,
+    };
+    const [rect] = wallCoverRects(room, 'right', [near]);
+    // Тот же предмет у ближнего угла на правой стене оказывается справа.
+    expect(rect.x + rect.w).toBe(room.height);
   });
 });

@@ -28,21 +28,23 @@ export function wallSurface(room: Room, wall: Side): WallSurface {
 }
 
 /**
- * Положение точки вдоль стены, если смотреть на стену снаружи помещения.
+ * Положение точки вдоль стены на её развёртке.
  *
- * Развёртку читают, стоя лицом к стене, поэтому направление отсчёта у каждой
- * стены своё: иначе левый край чертежа окажется справа на объекте.
+ * Развёртку читают, стоя внутри помещения лицом к стене, поэтому «право»
+ * на чертеже — это право наблюдателя, а не направление осей. Для дальней
+ * стены взгляд идёт вдоль +Y и право совпадает с +X; для ближней взгляд
+ * противоположен, и отсчёт разворачивается.
  */
 function alongWall(room: Room, wall: Side, x: Mm, y: Mm): Mm {
   switch (wall) {
-    case 'bottom':
-      return x;
     case 'top':
+      return x;
+    case 'bottom':
       return room.width - x;
     case 'left':
-      return room.height - y;
-    case 'right':
       return y;
+    case 'right':
+      return room.height - y;
   }
 }
 
@@ -184,8 +186,8 @@ export function floorJointAlong(
   const offset = horizontal ? floorOx : floorOy;
   const step = horizontal ? stepX : stepY;
 
-  // Развёртка боковых и дальней стен читается в обратную сторону.
-  const flipped = wall === 'top' || wall === 'left';
+  // У ближней и правой стены развёртка читается против осей помещения.
+  const flipped = wall === 'bottom' || wall === 'right';
   const length = horizontal ? room.width : room.height;
 
   return { offset: flipped ? (length - offset) % step : offset, step };
