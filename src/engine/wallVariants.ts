@@ -19,6 +19,7 @@ import type {
   Project,
   Side,
   WallMetrics,
+  WallPoint,
   WallVariant,
 } from './types';
 
@@ -83,17 +84,19 @@ function widthCandidates(
   grout: Mm,
   verticals: Array<{ value: Mm; label: string }> = [],
 ): Candidate[] {
-  const list: Candidate[] = [
+  // Привязки к обстановке идут первыми: если смещение совпадёт с обычной
+  // стратегией, в списке останется название, которое объясняет больше —
+  // «плитка по центру смесителя» полезнее, чем «плитка по центру».
+  const list: Candidate[] = verticals
+    .filter((v) => v.value > 0 && v.value < width)
+    .map((v) => ({ label: v.label, offset: mod(v.value, step) }));
+
+  list.push(
     { label: 'плитка по центру', offset: offsetFor('centerTile', width, tileWidth, step, grout) },
     { label: 'шов по центру', offset: offsetFor('centerJoint', width, tileWidth, step, grout) },
     { label: 'целая от левого угла', offset: offsetFor('flushStart', width, tileWidth, step, grout) },
     { label: 'целая от правого угла', offset: offsetFor('flushEnd', width, tileWidth, step, grout) },
-  ];
-
-  for (const v of verticals) {
-    if (v.value <= 0 || v.value >= width) continue;
-    list.push({ label: v.label, offset: mod(v.value, step) });
-  }
+  );
 
   const byOffset = new Map<Mm, Candidate>();
   for (const c of list) if (!byOffset.has(c.offset)) byOffset.set(c.offset, c);
@@ -182,6 +185,7 @@ function computeWallMetrics(
   step: { x: Mm; y: Mm },
   edges: Array<{ value: Mm; kind: string }>,
   floorJoint: { offset: Mm; step: Mm },
+  points: WallPoint[],
 ): WallMetrics {
   const cuts: Record<Side, Mm[]> = { left: [], right: [], bottom: [], top: [] };
   for (const t of tiles) {
@@ -216,6 +220,20 @@ function computeWallMetrics(
     }
   }
 
+  // Зазор между отверстием под вывод и ближайшим швом. Берём худший из выводов:
+  // достаточно одного попадания на шов, чтобы вариант испортился.
+  let outletClearance: Mm | null = null;
+  for (const p of points) {
+    const radius = p.size / 2;
+    const dx = mod(p.along - layout.ox, step.x);
+    const dy = mod(p.height - layout.oy, step.y);
+    const toVertical = Math.min(dx, step.x - dx);
+    const toHorizontal = Math.min(dy, step.y - dy);
+    const clearance = Math.round(Math.min(toVertical, toHorizontal) - radius);
+
+    outletClearance = outletClearance === null ? clearance : Math.min(outletClearance, clearance);
+  }
+
   // Расхождение вертикального шва стены с ближайшим швом пола.
   const dj = mod(layout.ox - floorJoint.offset, floorJoint.step);
   const floorJointOffset = Math.round(Math.min(dj, floorJoint.step - dj));
@@ -237,6 +255,7 @@ function computeWallMetrics(
     },
     edgeAlignment,
     floorJointOffset,
+    outletClearance,
   };
 }
 
@@ -262,6 +281,7 @@ export function generateWallVariants(
     covers: wallCoverRects(room, wall, objects),
     excluded: wallExcludedRects(room, wall, objects, door),
     edges: wallEdgeHeights(room, wall, objects),
+    points: (project.points ?? []).filter((p) => p.wall === wall),
     floorLayout,
     orientation,
   });
@@ -275,6 +295,8 @@ export interface SurfaceInput {
   excluded: Rect[];
   edges: Array<{ value: Mm; kind: string }>;
   floorLayout?: Layout;
+  /** Выводы на этой поверхности: отверстия не должны попадать на шов. */
+  points?: WallPoint[];
   /**
    * Ориентация плитки на стенах — решение на всё помещение, а не на отдельную
    * поверхность: если на одной стене плитка лежит, а на соседней стоит, рисунок
@@ -301,10 +323,16 @@ export function generateSurfaceVariants(
     .reduce((max, z) => Math.max(max, z.y + z.h), 0);
 
   const labelFor = (kind: string) => LABELS[kind] ?? kind;
+  const points = input.points ?? [];
 
   // Вертикальные линии, по которым имеет смысл поставить шов: края проёма
-  // и края предметов вдоль стены.
+  // и края предметов вдоль стены. Вывод — наоборот: шов от него уводят,
+  // поэтому его центр совмещают с центром плитки.
   const verticals = [
+    ...points.map((p) => ({
+      value: p.along - (tile.width >= tile.height ? tile.width : tile.height) / 2,
+      label: `плитка по центру: ${p.label}`,
+    })),
     ...input.excluded.flatMap((z) => [
       { value: z.x, label: 'шов по левому краю проёма' },
       { value: z.x + z.w, label: 'шов по правому краю проёма' },
@@ -357,7 +385,16 @@ export function generateSurfaceVariants(
             title: `${cy.label} × ${cx.label}`,
             tiles,
             hiddenTiles: hidden,
-            metrics: computeWallMetrics(tiles, hidden, eff, layout, step, edges, floorJoint),
+            metrics: computeWallMetrics(
+              tiles,
+              hidden,
+              eff,
+              layout,
+              step,
+              edges,
+              floorJoint,
+              points,
+            ),
           });
         }
       }
@@ -393,7 +430,13 @@ export const MIN_EYE_LEVEL_CUT: Mm = 100;
  * за дробность, а не за ось.
  */
 export function rankWallVariants(a: WallVariant, b: WallVariant): number {
+  // Вывод, отстоящий от шва хотя бы на ширину ладони, важнее лишнего куска:
+  // отверстие у самого шва сверлить неудобно, а трещина по шву — обычное дело.
+  const clearanceOf = (v: WallVariant) =>
+    v.metrics.outletClearance === null ? Infinity : Math.min(v.metrics.outletClearance, 100);
+
   return (
+    clearanceOf(b) - clearanceOf(a) ||
     a.metrics.pieceCount - b.metrics.pieceCount ||
     a.metrics.distinctCuts - b.metrics.distinctCuts ||
     b.metrics.eyeLevelCut - a.metrics.eyeLevelCut ||
@@ -409,7 +452,13 @@ export function rejectWallVariants(variants: WallVariant[]): {
   kept: WallVariant[];
   rejected: number;
 } {
-  const kept = variants.filter((v) => v.metrics.eyeLevelCut >= MIN_EYE_LEVEL_CUT);
+  const kept = variants.filter(
+    (v) =>
+      v.metrics.eyeLevelCut >= MIN_EYE_LEVEL_CUT &&
+      // Шов, режущий отверстие под вывод, — брак: собранное из двух половинок
+      // отверстие видно всегда, да и сверлить по шву нечем.
+      (v.metrics.outletClearance === null || v.metrics.outletClearance > 0),
+  );
   return kept.length > 0
     ? { kept, rejected: variants.length - kept.length }
     : { kept: variants, rejected: 0 };

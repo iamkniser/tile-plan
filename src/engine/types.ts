@@ -231,6 +231,24 @@ export interface Variant {
   metrics: Metrics;
 }
 
+/**
+ * Вывод на стене: смеситель, розетка, кронштейн полотенцесушителя.
+ *
+ * Отверстие под вывод не должно приходиться на шов: сверлить по шву неудобно,
+ * а собранное из двух половинок отверстие видно всегда.
+ */
+export interface WallPoint {
+  id: string;
+  wall: Side;
+  /** Положение вдоль стены, считая от левого края её развёртки. */
+  along: Mm;
+  /** Высота над полом. */
+  height: Mm;
+  /** Диаметр отверстия или габарит выводного узла. */
+  size: Mm;
+  label: string;
+}
+
 /** Оценка раскладки одной стены. */
 export interface WallMetrics {
   /**
@@ -256,6 +274,11 @@ export interface WallMetrics {
   edgeAlignment: { kind: ObjectKind; offset: Mm } | null;
   /** Расхождение ближайшего вертикального шва стены со швом пола. */
   floorJointOffset: Mm;
+  /**
+   * Насколько ближайший шов отстоит от края отверстия под вывод. Ноль означает,
+   * что шов режет отверстие — так сверлить нельзя.
+   */
+  outletClearance: Mm | null;
 }
 
 export interface WallVariant {
@@ -272,4 +295,5 @@ export interface Project {
   tile: Tile;
   door?: Door;
   objects?: RoomObject[];
+  points?: WallPoint[];
 }

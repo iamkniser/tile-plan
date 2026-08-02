@@ -1,6 +1,13 @@
 'use client';
 
-import { EYE_BAND, OBJECT_LABEL, type Rect, type WallCover, type WallVariant } from '@/engine';
+import {
+  EYE_BAND,
+  OBJECT_LABEL,
+  type Rect,
+  type WallCover,
+  type WallPoint,
+  type WallVariant,
+} from '@/engine';
 
 const SIDE = 240; // поле вокруг развёртки под размерные линии, мм
 const FONT = 62;
@@ -60,12 +67,14 @@ export function WallPlan({
   variant,
   covers = [],
   opening,
+  points = [],
   showEyeBand = true,
 }: {
   surface: { width: number; height: number };
   variant: WallVariant;
   covers?: WallCover[];
   opening?: Rect | null;
+  points?: WallPoint[];
   /** У экрана ванны полосы глаз нет: он целиком ниже неё. */
   showEyeBand?: boolean;
 }) {
@@ -162,6 +171,27 @@ export function WallPlan({
           </text>
         </g>
       )}
+
+      {/* Выводы: отверстие не должно приходиться на шов. */}
+      {points.map((p) => (
+        <g key={p.id}>
+          <circle
+            cx={p.along}
+            cy={flip(p.height, 0)}
+            r={Math.max(p.size / 2, 40)}
+            className="outlet"
+          />
+          <text
+            x={p.along}
+            y={flip(p.height, 0) - Math.max(p.size / 2, 40) - 30}
+            className="door-label"
+            fontSize={FONT * 0.85}
+            textAnchor="middle"
+          >
+            {p.label}
+          </text>
+        </g>
+      ))}
 
       <rect x={0} y={0} width={surface.width} height={surface.height} className="wall" />
 

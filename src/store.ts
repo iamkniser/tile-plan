@@ -4,6 +4,7 @@ import { create } from 'zustand';
 import {
   wallLength,
   type Door,
+  type WallPoint,
   type ObjectKind,
   type Room,
   type RoomObject,
@@ -39,6 +40,7 @@ export type WallOrientation = 'horizontal' | 'vertical';
 
 interface State {
   surface: Surface;
+  points: WallPoint[];
   wallOrientation: WallOrientation;
   room: Room;
   tile: Tile;
@@ -47,6 +49,7 @@ interface State {
   selectedIndex: number;
   setSurface: (surface: Surface) => void;
   setWallOrientation: (o: WallOrientation) => void;
+  setPoint: (id: string, patch: Partial<WallPoint>) => void;
   setRoom: (patch: Partial<Room>) => void;
   setTile: (patch: Partial<Tile>) => void;
   setDoor: (patch: Partial<Door>) => void;
@@ -98,7 +101,13 @@ function clampDoor(door: Door, room: Room): Door {
 }
 
 /** Значения по умолчанию: к ним возвращает сброс. */
-export const DEFAULTS: { room: Room; tile: Tile; door: Door; fixtures: Fixture[] } = {
+export const DEFAULTS: {
+  room: Room;
+  tile: Tile;
+  door: Door;
+  fixtures: Fixture[];
+  points: WallPoint[];
+} = {
   // Стена с дверью — 2600 мм, глубина от неё — 1700 мм.
   room: { width: 2600, height: 1700, ceiling: 2500 },
   tile: { width: 1200, height: 600, grout: 2 },
@@ -151,6 +160,10 @@ export const DEFAULTS: { room: Room; tile: Tile; door: Door; fixtures: Fixture[]
       tiledBehind: true,
     },
   ],
+  // Смеситель по центру ванны: отверстие не должно попасть на шов.
+  points: [
+    { id: 'mixer', wall: 'left', along: 850, height: 1100, size: 70, label: 'смеситель' },
+  ],
 };
 
 export const useProject = create<State>((set) => ({
@@ -160,6 +173,11 @@ export const useProject = create<State>((set) => ({
   selectedIndex: 0,
   setSurface: (surface) => set({ surface, selectedIndex: 0 }),
   setWallOrientation: (wallOrientation) => set({ wallOrientation, selectedIndex: 0 }),
+  setPoint: (id, patch) =>
+    set((s) => ({
+      points: s.points.map((p) => (p.id === id ? { ...p, ...patch } : p)),
+      selectedIndex: 0,
+    })),
   setRoom: (patch) =>
     set((s) => {
       const room = { ...s.room, ...patch };

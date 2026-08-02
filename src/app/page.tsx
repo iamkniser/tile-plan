@@ -121,6 +121,8 @@ export default function Page() {
     setSurface,
     wallOrientation,
     setWallOrientation,
+    points,
+    setPoint,
   } = useProject();
 
   // На телефоне форма заняла бы весь первый экран, поэтому там она свёрнута,
@@ -202,13 +204,13 @@ export default function Page() {
 
     const all = surface.startsWith('screen:')
       ? generateScreenVariants(
-          { room, tile, door, objects },
+          { room, tile, door, objects, points },
           surface.slice('screen:'.length),
           floorVariant.layout,
           orientation,
         )
       : generateWallVariants(
-          { room, tile, door, objects },
+          { room, tile, door, objects, points },
           surface as Side,
           floorVariant.layout,
           orientation,
@@ -219,7 +221,7 @@ export default function Page() {
       wallVariants: kept.sort(rankWallVariants).slice(0, MAX_VARIANTS),
       wallRejected: rejected,
     };
-  }, [surface, room, tile, door, objects, floorVariant, wallOrientation]);
+  }, [surface, room, tile, door, objects, points, floorVariant, wallOrientation]);
 
   // Что именно рисуем: развёртку стены или экран ванны — данные для них разные.
   const isScreen = surface !== 'floor' && surface.startsWith('screen:');
@@ -242,6 +244,11 @@ export default function Page() {
       ? screenCovers(room, screenObject, objects)
       : wallCoverRects(room, surface as Side, objects);
   }, [surface, room, objects, screenObject]);
+
+  const activePoints = useMemo(
+    () => (surface === 'floor' || isScreen ? [] : points.filter((p) => p.wall === surface)),
+    [surface, isScreen, points],
+  );
 
   const activeOpening = useMemo(
     () => (surface === 'floor' || isScreen ? null : wallOpening(room, surface as Side, door)),
@@ -406,6 +413,42 @@ export default function Page() {
           </fieldset>
         ))}
 
+          {points.map((p) => (
+            <fieldset key={p.id}>
+              <legend>{p.label}</legend>
+              <label className="field">
+                <span>Стена</span>
+                <select
+                  value={p.wall}
+                  onChange={(e) => setPoint(p.id, { wall: e.target.value as Side })}
+                >
+                  {(Object.keys(WALL_LABEL) as Side[]).map((w) => (
+                    <option key={w} value={w}>
+                      {WALL_LABEL[w]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <NumberField
+                label="Отступ по стене"
+                value={p.along}
+                onChange={(v) => setPoint(p.id, { along: v })}
+                min={0}
+              />
+              <NumberField
+                label="Высота"
+                value={p.height}
+                onChange={(v) => setPoint(p.id, { height: v })}
+                min={0}
+              />
+              <NumberField
+                label="Диаметр"
+                value={p.size}
+                onChange={(v) => setPoint(p.id, { size: v })}
+              />
+            </fieldset>
+          ))}
+
           <button
             type="button"
             className={confirmReset ? 'link link--warn' : 'link'}
@@ -490,6 +533,7 @@ export default function Page() {
               variant={selectedWall}
               covers={activeCovers}
               opening={activeOpening}
+              points={activePoints}
               showEyeBand={!isScreen}
             />
           ) : (
@@ -575,6 +619,16 @@ export default function Page() {
               <dt>Разных подрезок</dt>
               <dd>{selectedWall.metrics.distinctCuts}</dd>
             </div>
+            {selectedWall.metrics.outletClearance !== null && (
+              <div className="summary__accent">
+                <dt>Вывод до шва</dt>
+                <dd>
+                  {selectedWall.metrics.outletClearance <= 0
+                    ? 'шов режет отверстие'
+                    : `${selectedWall.metrics.outletClearance} мм`}
+                </dd>
+              </div>
+            )}
             <div className="summary__accent">
               <dt>Подрезка на уровне глаз</dt>
               <dd>{selectedWall.metrics.eyeLevelCut} мм</dd>

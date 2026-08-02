@@ -873,3 +873,9 @@ legend {
   font: 11px/1 var(--mono);
   letter-spacing: 0.06em;
 }
+
+.outlet {
+  fill: none;
+  stroke: var(--laser);
+  stroke-width: 6;
+}
