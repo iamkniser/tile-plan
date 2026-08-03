@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { buildThresholdTiles, computeThresholdMetrics, thresholdBounds } from './threshold';
+import {
+  buildThresholdTiles,
+  computeThresholdMetrics,
+  thresholdBounds,
+  thresholdTileStart,
+} from './threshold';
+import { buildTilesIn } from './grid';
 import type { Door, Layout, Room, Tile } from './types';
 
 const room: Room = { width: 2600, height: 1700 };
@@ -99,5 +105,38 @@ describe('оценка порога', () => {
     expect(m.seamless).toBe(true);
     // Целая плитка от стены: сквозной кусок — проём плюс вся плитка.
     expect(m.outerCut).toBe(150 + 600);
+  });
+});
+
+describe('привязка к кромке проёма', () => {
+  const oblong: Tile = { width: 1200, height: 600, grout: 2 };
+
+  it('плитка проходит проём насквозь и входит в комнату остатком глубины', () => {
+    const start = thresholdTileStart(room, door(), oblong.height)!;
+    const l = layout({ oy: start });
+    const m = computeThresholdMetrics(room, oblong, l, door())!;
+
+    // Ни одного шва в проёме, а сквозной кусок равен всей глубине плитки:
+    // продольного роспуска нет, режется только контур проёма.
+    expect(m.seamless).toBe(true);
+    expect(m.outerCut).toBe(oblong.height);
+
+    // В комнату плитка входит тем, что осталось от глубины после проёма.
+    const first = buildTilesIn({ x0: 0, y0: 0, x1: room.width, y1: room.height }, oblong, l)
+      .filter((t) => t.y === 0)[0];
+    expect(first.h).toBe(oblong.height - 150);
+  });
+
+  it('для двери в дальней стене отсчитывается в обратную сторону', () => {
+    const far = door({ wall: 'top' });
+    const start = thresholdTileStart(room, far, oblong.height)!;
+    const m = computeThresholdMetrics(room, oblong, layout({ oy: start }), far)!;
+
+    expect(m.seamless).toBe(true);
+    expect(m.outerCut).toBe(oblong.height);
+  });
+
+  it('без глубины проёма привязки нет', () => {
+    expect(thresholdTileStart(room, door({ thresholdDepth: 0 }), 600)).toBeNull();
   });
 });

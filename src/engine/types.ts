@@ -43,6 +43,7 @@ export type StrategyId =
   | 'centerTile'
   | 'centerJoint'
   | 'alignObject'
+  | 'fromEntry'
   | 'flushStart'
   | 'flushEnd';
 

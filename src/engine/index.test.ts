@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { MIN_COMFORTABLE_CUT, MIN_PRACTICAL_CUT, generateVariants, rejectImpractical } from './index';
+import {
+  MIN_COMFORTABLE_CUT,
+  MIN_HIDDEN_CUT,
+  MIN_PRACTICAL_CUT,
+  generateVariants,
+  rejectImpractical,
+} from './index';
 import type { Door, Room, RoomObject, Tile } from './types';
 
 const room: Room = { width: 2600, height: 1700 };
@@ -18,11 +24,26 @@ describe('отсев непрактичных вариантов', () => {
     expect(kept.length).toBeGreaterThan(0);
     expect(kept.length).toBeLessThan(all.length);
     for (const v of kept) {
-      expect(v.metrics.minCut).toBeGreaterThanOrEqual(MIN_PRACTICAL_CUT);
+      expect(v.metrics.minCut).toBeGreaterThanOrEqual(MIN_HIDDEN_CUT);
       expect(v.metrics.minVisibleCut).toBeGreaterThanOrEqual(MIN_COMFORTABLE_CUT);
     }
     expect(rejections.length).toBeGreaterThan(0);
     expect(rejections.every((r) => r.count > 0)).toBe(true);
+  });
+
+  it('оставляет вариант с привязкой к проёму: его тонкий ряд уходит под мебель', () => {
+    const { kept } = rejectImpractical(generateVariants({ room, tile, door, objects }));
+    const anchored = kept.find(
+      (v) => v.strategyY === 'fromEntry' && v.layout.orientation === 0,
+    );
+
+    expect(anchored).toBeDefined();
+    // Ряд, добирающий глубину помещения, тоньше видимого порога — но не виден.
+    expect(anchored!.metrics.minCut).toBeLessThan(MIN_PRACTICAL_CUT);
+    expect(anchored!.metrics.hiddenCutCount).toBeGreaterThan(0);
+    // Зато у порога лежит плитка во всю глубину, без продольного роспуска.
+    expect(anchored!.metrics.threshold!.seamless).toBe(true);
+    expect(anchored!.metrics.threshold!.outerCut).toBe(tile.height);
   });
 
   it('не выбрасывает узкие куски из проёма молча', () => {

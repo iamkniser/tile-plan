@@ -31,6 +31,31 @@ export function thresholdBounds(room: Room, door: Door): Bounds | null {
   }
 }
 
+/**
+ * Начало плитки, при котором её кромка совпадает с наружной гранью проёма.
+ *
+ * Даёт раскладку, где плитка проходит проём насквозь и входит в помещение всей
+ * оставшейся глубиной: у порога не образуется узкой полосы, а сам кусок режется
+ * только по контуру проёма, без продольного роспуска. Ось — та, что перпендикулярна
+ * стене с дверью. `null` — если глубина проёма не задана.
+ */
+export function thresholdTileStart(room: Room, door: Door, tileLength: Mm): Mm | null {
+  const depth = door.thresholdDepth ?? 0;
+  if (depth <= 0) return null;
+
+  switch (door.wall) {
+    // Проём лежит в отрицательных координатах — плитка начинается от его кромки.
+    case 'bottom':
+    case 'left':
+      return -depth;
+    // Проём за дальней границей — от его кромки плитка отсчитывается назад.
+    case 'top':
+      return room.height + depth - tileLength;
+    case 'right':
+      return room.width + depth - tileLength;
+  }
+}
+
 export function buildThresholdTiles(
   room: Room,
   tile: Tile,

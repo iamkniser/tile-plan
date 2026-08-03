@@ -2,7 +2,7 @@ import { computeEntryMetrics, doorCenter, viewerPoint } from './entry';
 import { buildTiles, effectiveTile, steps } from './grid';
 import { computeMetrics } from './metrics';
 import { coverRects, hiddenFlags } from './objects';
-import { buildThresholdTiles, computeThresholdMetrics } from './threshold';
+import { buildThresholdTiles, computeThresholdMetrics, thresholdTileStart } from './threshold';
 import { STRATEGY_ORDER, axisCandidates } from './strategies';
 import type {
   Layout,
@@ -39,7 +39,12 @@ export {
 export { generateScreenVariants, screenCovers, screenSurface } from './screen';
 export type { ScreenSurface } from './screen';
 export type { Rationale } from './rationale';
-export { buildThresholdTiles, computeThresholdMetrics, thresholdBounds } from './threshold';
+export {
+  buildThresholdTiles,
+  computeThresholdMetrics,
+  thresholdBounds,
+  thresholdTileStart,
+} from './threshold';
 export {
   computeEntryMetrics,
   doorCenter,
@@ -108,6 +113,14 @@ export const MIN_PRACTICAL_CUT = 50;
 /** Подрезка тоньше этого в поле зрения читается как ошибка укладки. */
 export const MIN_COMFORTABLE_CUT = 100;
 
+/**
+ * Скрытой мебелью подрезке позволено быть уже видимой: именно туда уводят ряд,
+ * добирающий погрешность помещения, и скол там ничего не стоит. Но резаться она
+ * всё равно должна — полоска тоньше этого крошится на плиткорезе и не держится
+ * на клею. Число из практики и не откалибровано (SPEC.md §10).
+ */
+export const MIN_HIDDEN_CUT = 30;
+
 export interface Rejection {
   reason: string;
   count: number;
@@ -126,8 +139,12 @@ export function rejectImpractical(variants: Variant[]): {
 
   const checks: Array<{ reason: string; ok: (v: Variant) => boolean }> = [
     {
-      reason: `подрезка тоньше ${MIN_PRACTICAL_CUT} мм — такую сложно резать`,
-      ok: (v) => v.metrics.minCut >= MIN_PRACTICAL_CUT,
+      reason: `подрезка тоньше ${MIN_HIDDEN_CUT} мм — такую не отрезать и не приклеить`,
+      ok: (v) => v.metrics.minCut >= MIN_HIDDEN_CUT,
+    },
+    {
+      reason: `на виду подрезка тоньше ${MIN_PRACTICAL_CUT} мм — такую сложно резать`,
+      ok: (v) => v.metrics.minVisibleCut >= MIN_PRACTICAL_CUT,
     },
     {
       reason: `на виду подрезка тоньше ${MIN_COMFORTABLE_CUT} мм`,
@@ -178,6 +195,14 @@ export function generateVariants(project: Project): Variant[] {
     const entryAxis = door && (door.wall === 'bottom' || door.wall === 'top') ? 'x' : 'y';
     const entryCenter = door ? doorCenter(door) : null;
 
+    // Проём уходит вглубь по оси, перпендикулярной оси входа: привязка к его
+    // кромке имеет смысл только на ней.
+    const depthAxis = entryAxis === 'x' ? 'y' : 'x';
+    const thresholdX =
+      door && depthAxis === 'x' ? thresholdTileStart(room, door, eff.w) : null;
+    const thresholdY =
+      door && depthAxis === 'y' ? thresholdTileStart(room, door, eff.h) : null;
+
     const alongX = axisCandidates(
       'x',
       room.width,
@@ -186,6 +211,7 @@ export function generateVariants(project: Project): Variant[] {
       tile.grout,
       objects,
       entryAxis === 'x' ? entryCenter : null,
+      thresholdX,
     );
     const alongY = axisCandidates(
       'y',
@@ -195,6 +221,7 @@ export function generateVariants(project: Project): Variant[] {
       tile.grout,
       objects,
       entryAxis === 'y' ? entryCenter : null,
+      thresholdY,
     );
 
     for (const rowShift of shifts) {

@@ -82,6 +82,17 @@ describe('объяснение варианта', () => {
     }
   });
 
+  it('предупреждает о тонком ряде, спрятанном под мебелью', () => {
+    const all = variants();
+    const anchored = all.find((v) => v.strategyY === 'fromEntry' && v.layout.orientation === 0)!;
+    const r = buildRationale(anchored, all);
+
+    // Ряд не виден, поэтому в плюсах он как скрытая подрезка, а в минусах —
+    // как единственное место, куда уходит погрешность помещения.
+    expect(r.cons.some((c) => c.includes('погрешность помещения'))).toBe(true);
+    expect(r.pros.some((p) => p.includes('не будет видно'))).toBe(true);
+  });
+
   it('работает без двери, когда оценивать вход нечем', () => {
     const all = generateVariants({ room, tile, objects });
     const r = buildRationale(all[0], all);

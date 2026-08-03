@@ -9,6 +9,7 @@ export const STRATEGY_ORDER: StrategyId[] = [
   'centerJointEntry',
   'centerTile',
   'centerJoint',
+  'fromEntry',
   'alignObject',
   'flushStart',
   'flushEnd',
@@ -17,7 +18,7 @@ export const STRATEGY_ORDER: StrategyId[] = [
 /** Стратегии, не зависящие от обстановки: смещение выводится из одних размеров. */
 export type BaseStrategyId = Exclude<
   StrategyId,
-  'alignObject' | 'centerTileEntry' | 'centerJointEntry'
+  'alignObject' | 'centerTileEntry' | 'centerJointEntry' | 'fromEntry'
 >;
 
 const BASE_STRATEGIES: BaseStrategyId[] = [
@@ -35,6 +36,7 @@ const LABELS: Record<StrategyId, Record<Axis, string>> = {
   centerTile: { x: 'плитка по центру', y: 'плитка по центру' },
   centerJoint: { x: 'шов по центру', y: 'шов по центру' },
   alignObject: { x: 'шов по краю мебели', y: 'шов по краю мебели' },
+  fromEntry: { x: 'целая от проёма', y: 'целая от проёма' },
   flushStart: { x: 'целая от левой стены', y: 'целая от нижней стены' },
   flushEnd: { x: 'целая от правой стены', y: 'целая от верхней стены' },
 };
@@ -63,6 +65,8 @@ export function axisCandidates(
   objects: RoomObject[] = [],
   /** Координата оси входа на этой оси; null — если взгляд идёт вдоль неё. */
   entryCenter: Mm | null = null,
+  /** Начало плитки, совпадающее с наружной кромкой проёма; null — если оси не та или проёма нет. */
+  thresholdStart: Mm | null = null,
 ): AxisCandidate[] {
   const candidates: AxisCandidate[] = BASE_STRATEGIES.map((id) => ({
     id,
@@ -82,6 +86,18 @@ export function axisCandidates(
       id: 'centerJointEntry',
       label: strategyLabel('centerJointEntry', axis),
       offset: mod(Math.round(entryCenter + grout / 2), step),
+    });
+  }
+
+  // Привязка не к стене, а к кромке проёма: плитка проходит порог насквозь и
+  // входит в комнату всей оставшейся глубиной. Стратегия чужая по духу остальным —
+  // она отсчитывается от точки за пределами помещения, — но даёт раскладку,
+  // которую иначе не получить ни одним смещением от стен.
+  if (thresholdStart !== null) {
+    candidates.push({
+      id: 'fromEntry',
+      label: strategyLabel('fromEntry', axis),
+      offset: mod(Math.round(thresholdStart), step),
     });
   }
 
