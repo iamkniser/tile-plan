@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { LayoutPlan } from '@/components/LayoutPlan';
 import { WallPlan } from '@/components/WallPlan';
 import {
+  DEFAULT_CEILING,
   OBJECT_LABEL,
   buildInstructions,
   buildRationale,
@@ -291,7 +292,7 @@ export default function Page() {
           <NumberField label="Длина" value={room.height} onChange={(v) => setRoom({ height: v })} />
           <NumberField
             label="Высота"
-            value={room.ceiling ?? 2500}
+            value={room.ceiling ?? DEFAULT_CEILING}
             onChange={(v) => setRoom({ ceiling: v })}
           />
         </fieldset>
