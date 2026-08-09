@@ -162,7 +162,8 @@ export const DEFAULTS: {
   ],
   // Отверстия под выводы не должны попадать на шов.
   points: [
-    { id: 'mixer', wall: 'left', along: 850, height: 1100, size: 70, label: 'смеситель' },
+    // Смеситель на длинной стороне ванны: середина её 1700 мм, высота 800.
+    { id: 'mixer', wall: 'left', along: 850, height: 800, size: 70, label: 'смеситель' },
     // Гусак на торце ванны: дальняя стена, середина её стороны 700 мм.
     { id: 'spout', wall: 'top', along: 350, height: 800, size: 70, label: 'гусак' },
   ],
